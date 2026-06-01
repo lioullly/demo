@@ -48,15 +48,19 @@ function addDragHandles(div, id, type, readOnly) {
       const scale = Math.min(2.5, Math.max(0.6, nw / 280))
       div.querySelectorAll('input,textarea').forEach((inp) => { inp.style.fontSize = Math.round(14 * scale) + 'px' })
     }
-    const up = () => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up) }
+    const up = (ev) => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); try { resizer.releasePointerCapture(ev.pointerId) } catch (_) {} }
     document.addEventListener('pointermove', move); document.addEventListener('pointerup', up)
   }
   div.appendChild(resizer)
 
+  const clickHandler = (e) => { if (!div.contains(e.target)) hideChrome(div) }
+  div._cleanup = () => { document.removeEventListener('click', clickHandler) }
+  document.addEventListener('click', clickHandler)
+
   const del = document.createElement('button'); del.textContent = 'x'
   del.setAttribute('data-chrome', '')
   del.style.cssText = 'position:absolute;top:-4px;right:-4px;background:#fff;color:#999;border:1px solid #93c5fd;border-radius:50%;width:20px;height:20px;font-size:11px;cursor:pointer;z-index:2;line-height:1;display:none'
-  del.onclick = (e) => { e.stopPropagation(); div.remove(); sendWS({ type:'block_delete', blockId:id, pageId:getPageId(), userId:USER_ID, id:uid(), ts:Date.now(), source:USER_ID }) }
+  del.onclick = (e) => { e.stopPropagation(); if (div._cleanup) div._cleanup(); div.remove(); sendWS({ type:'block_delete', blockId:id, pageId:getPageId(), userId:USER_ID, id:uid(), ts:Date.now(), source:USER_ID }) }
   div.appendChild(del)
 }
 
@@ -67,7 +71,6 @@ export function makeBlock(id, type, payload, readOnly) {
   div.addEventListener('mouseenter', () => { div.style.borderColor = '#93c5fd'; div.style.borderStyle = 'dashed' })
   div.addEventListener('mouseleave', () => { if (document.activeElement !== div && !div.contains(document.activeElement)) { div.style.borderColor = 'transparent'; resetChrome(div) } })
   div.addEventListener('click', () => { showChrome(div) })
-  document.addEventListener('click', (e) => { if (!div.contains(e.target)) hideChrome(div) })
   addDragHandles(div, id, type, readOnly)
 
   const inner = document.createElement('div'); inner.style.cssText = 'display:flex;align-items:flex-start;gap:6px'
@@ -80,7 +83,7 @@ export function makeBlock(id, type, payload, readOnly) {
   if (type === 'todo') {
     const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = payload.checked || false
     cb.style.cssText = 'width:18px;height:18px;flex-shrink:0;margin-top:2px'
-    if (!readOnly) cb.onchange = () => sendBlockUpdate(id, null, cb.checked)
+    if (!readOnly) cb.onchange = () => sendBlockUpdate(id, undefined, cb.checked)
     inner.appendChild(cb)
   }
 
@@ -132,7 +135,7 @@ export function handleBlockMsg(msg) {
     const existing = wrap.querySelector('[data-block-id="'+msg.blockId+'"]')
     if (existing) {
       const inp = existing.querySelector('input[type="text"],textarea')
-      if (inp && msg.payload.text !== undefined) inp.value = msg.payload.text
+      if (inp && msg.payload.text !== undefined && msg.payload.text !== null) inp.value = msg.payload.text
       const cb = existing.querySelector('input[type="checkbox"]')
       if (cb && msg.payload.checked !== undefined) cb.checked = msg.payload.checked
     }

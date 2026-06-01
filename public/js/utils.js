@@ -10,8 +10,8 @@ export const PAGE_SIZES = { A4:{w:595,h:842}, A5:{w:420,h:595}, Letter:{w:612,h:
 export let pages = [{ id:'page_1', name:'Page 1', size:'A4', strokes:new Map() }]
 export let currentPage = 0
 export function getPageId() { return pages[currentPage]?.id || 'page_1' }
-export function getStrokes() { return pages[currentPage]?.strokes || pages[0].strokes }
-export function getPageSize() { const s=pages[currentPage]?.size||'A4'; return PAGE_SIZES[s]||PAGE_SIZES.Auto }
+export function getStrokes() { return pages[currentPage]?.strokes || (pages[0]?.strokes || new Map()) }
+export function getPageSize() { const s=pages[currentPage]?.size||'A4'; return PAGE_SIZES[s] || { w:595, h:842 } }
 
 // Shared state
 export let USER_ID = `u_${Date.now().toString(36)}`
