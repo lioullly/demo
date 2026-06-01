@@ -1,0 +1,20 @@
+{
+  "name": "dual-note-sync",
+  "version": "0.1.0",
+  "description": "双人手写笔记同步实验 — Electron + UDP 发现 + WebSocket 同步",
+  "private": true,
+  "main": "src/electron/main.js",
+  "type": "module",
+  "scripts": {
+    "dev": "electron .",
+    "start": "electron ."
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.0.0",
+    "ws": "^8.16.0",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}
