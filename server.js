@@ -15,6 +15,14 @@ const startTime = Date.now()
 const MAX_MSG_SIZE = 1024 * 1024 // 1MB per message
 const MAX_ROOM_NAME = 20
 
+// Server-side save storage: roomCode -> { data, savedAt }
+const savedNotes = new Map()
+const SAVE_TTL = 5 * 24 * 60 * 60 * 1000
+setInterval(() => {
+  const now = Date.now()
+  for (const [k, v] of savedNotes) { if (now - v.savedAt > SAVE_TTL) savedNotes.delete(k) }
+}, 60 * 60 * 1000)
+
 /* ── 终端管理命令 ── */
 function setupCLI() {
   import('readline').then(({ createInterface }) => {
@@ -152,6 +160,22 @@ const http = createServer((req, res) => {
     return
   }
   if (req.url === '/api/status') {
+  if (req.method === "POST" && req.url === "/api/save") {
+    let body = ""; req.on("data", (c) => { body += c.toString(); if (body.length > 5*1024*1024) req.destroy() })
+    req.on("end", () => {
+      try { const d = JSON.parse(body); if (d.room) { savedNotes.set(d.room.toUpperCase(), { data: d.data, savedAt: Date.now() }); res.writeHead(200); res.end(JSON.stringify({ ok: true })) } }
+      catch(_) { res.writeHead(400); res.end("bad request") }
+    })
+    return
+  }
+  if (req.url.startsWith("/api/load?")) {
+    const room = new URL(req.url, "http://localhost").searchParams.get("room")?.toUpperCase()
+    const saved = savedNotes.get(room)
+    if (saved && Date.now() - saved.savedAt < SAVE_TTL) { res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }); res.end(JSON.stringify({ ok: true, data: saved.data, savedAt: saved.savedAt })) }
+    else if (saved) { savedNotes.delete(room); res.writeHead(404); res.end("expired") }
+    else { res.writeHead(404); res.end("not found") }
+    return
+  }
     const list = []
     rooms.forEach((r, code) => list.push({ room: code, clients: r.peers.size, createdAt: r.createdAt }))
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })

@@ -199,8 +199,31 @@ function setupCanvas() {
   if (vBoth) vBoth.onclick = () => { if(pp)pp.style.display='';resize();vBoth.className='on';if(vMine)vMine.className='' }
   if (vMine) vMine.onclick = () => { if(pp)pp.style.display='none';resize();vMine.className='on';if(vBoth)vBoth.className='' }
   if ($('btn-export')) $('btn-export').onclick = exportNotes
-  if ($('text-send')) $('text-send').onclick = sendText
-  if ($('text-cancel')) $('text-cancel').onclick = () => { const ti=$('text-input'); if(ti)ti.value=''; const to=$('text-overlay'); if(to)to.classList.remove('show') }
+
+  // Server save/load
+  const apiBase = () => `http://${connectedHost||hostInput.value?.trim()||location.hostname}:${WS_PORT}`
+  const saveBtn = $('btn-save'), loadBtn = $('btn-load')
+  if (saveBtn) saveBtn.onclick = async () => {
+    saveBtn.textContent = '...'; saveBtn.disabled = true
+    const strokes = []; getStrokes().forEach((s,id) => strokes.push({id,points:s.points,color:s.color,size:s.size}))
+    try {
+      const r = await fetch(apiBase()+'/api/save',{method:'POST',body:JSON.stringify({room,data:strokes})})
+      saveBtn.textContent = r.ok ? 'Saved' : 'Fail'
+    } catch(_) { saveBtn.textContent = 'Error' }
+    setTimeout(() => { saveBtn.textContent='保存'; saveBtn.disabled=false }, 1500)
+  }
+  if (loadBtn) loadBtn.onclick = async () => {
+    loadBtn.textContent = '...'; loadBtn.disabled = true
+    try {
+      const r = await fetch(apiBase()+'/api/load?room='+encodeURIComponent(room))
+      if (r.ok) {
+        const d = await r.json()
+        d.data.forEach((s) => { getStrokes().set(s.id,s); draw(cv.mine.ctxBg,s.points,s.color,s.size) })
+        loadBtn.textContent = 'Loaded'
+      } else loadBtn.textContent = 'None'
+    } catch(_) { loadBtn.textContent = 'Error' }
+    setTimeout(() => { loadBtn.textContent='加载'; loadBtn.disabled=false }, 1500)
+  }
 
   // Page management
   const updatePageIndicator = () => {
