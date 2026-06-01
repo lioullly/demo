@@ -127,7 +127,8 @@ function done(host) {
 
   const doShare = () => {
     const h = connectedHost || host || location.hostname
-    const text = `http://${h}:${WS_PORT}?room=${room}`
+    const name = userName || $('nickname-input')?.value?.trim() || ''
+    const text = `http://${h}:${WS_PORT}?room=${room}${name ? '&name=' + encodeURIComponent(name) : ''}`
     const ta = document.createElement('textarea')
     ta.value = text; ta.style.position = 'fixed'; ta.style.left = '-9999px'
     document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, 99999)
@@ -507,6 +508,8 @@ function connectWS(host) {
 
 // URL 直连
 const urlRoom = new URLSearchParams(location.search).get('room')
+const urlName = new URLSearchParams(location.search).get("name")
+if (urlName) { const ni=$("nickname-input"); if(ni)ni.value=decodeURIComponent(urlName); setNick(decodeURIComponent(urlName)) }
 const urlHost = new URLSearchParams(location.search).get('host')
 if (urlRoom) {
   room = urlRoom.toUpperCase()
