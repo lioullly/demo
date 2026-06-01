@@ -4,14 +4,16 @@
  */
 
 import { createServer } from 'http'
-import { readFileSync, existsSync } from 'fs'
-import { extname, join, dirname } from 'path'
+import { readFile } from 'fs'
+import { extname, join, dirname, normalize, sep } from 'path'
 import { fileURLToPath } from 'url'
 import { networkInterfaces } from 'os'
 import { WebSocketServer } from 'ws'
 
 const WS_PORT = process.env.PORT || 3000
 const startTime = Date.now()
+const MAX_MSG_SIZE = 1024 * 1024 // 1MB per message
+const MAX_ROOM_NAME = 20
 
 /* ── 终端管理命令 ── */
 function setupCLI() {
@@ -21,53 +23,58 @@ function setupCLI() {
     rl.on('line', (line) => {
       const cmd = line.trim().toLowerCase()
       if (cmd === 'help' || cmd === 'h' || cmd === '?') {
-        console.log(`\n  管理命令:`)
-        console.log(`    list / ls        查看所有房间`)
-        console.log(`    info              查看服务器状态`)
-        console.log(`    clear <room>      清空指定房间数据`)
-        console.log(`    kick <room>       断开指定房间所有客户端`)
-        console.log(`    exit / quit       关闭服务器`)
-        console.log(`    help / ?          显示此帮助\n`)
+        console.log('\n  Commands:')
+        console.log('    list / ls        List all rooms')
+        console.log('    info              Server status')
+        console.log('    clear <room>      Clear room data')
+        console.log('    kick <room>       Disconnect all clients in room')
+        console.log('    exit / quit       Stop server')
+        console.log('    help / ?          This help\n')
       } else if (cmd === 'list' || cmd === 'ls') {
-        if (rooms.size === 0) { console.log('  (无活跃房间)\n') }
+        if (rooms.size === 0) { console.log('  (no active rooms)\n') }
         else {
           rooms.forEach((r, code) => {
             const age = Math.round((Date.now() - r.createdAt) / 1000)
-            const ttl = r.timer ? ` (${Math.round(ROOM_TTL / 1000 - (Date.now() - (r.createdAt + r.peers.size * 10000))) / 100}s后销毁)` : ''
-            console.log(`  [${code}] ${r.peers.size}人 | ${r.history.length}笔 | 存活${age}s${ttl}`)
+            let ttlStr = ''
+            if (r.timer) {
+              const remaining = Math.max(0, Math.round((ROOM_TTL - (Date.now() - (r.createdAt + r.peers.size * 60000))) / 1000))
+              ttlStr = ` (${remaining}s until destroy)`
+            }
+            console.log(`  [${code}] ${r.peers.size} clients | ${r.history.length} strokes | alive ${age}s${ttlStr}`)
           })
-          console.log(`  共 ${rooms.size}/${MAX_ROOMS} 个房间\n`)
+          console.log(`  Total: ${rooms.size}/${MAX_ROOMS} rooms\n`)
         }
       } else if (cmd === 'info') {
         const mem = process.memoryUsage()
         const uptime = Math.round((Date.now() - startTime) / 1000)
         let totalPeers = 0, totalStrokes = 0
         rooms.forEach((r) => { totalPeers += r.peers.size; totalStrokes += r.history.length })
-        console.log(`\n  运行时间: ${uptime}s | 内存: ${Math.round(mem.heapUsed/1024/1024)}MB`)
-        console.log(`  房间: ${rooms.size}/${MAX_ROOMS} | 客户端: ${totalPeers} | 笔画: ${totalStrokes}\n`)
+        console.log(`\n  Uptime: ${uptime}s | Memory: ${Math.round(mem.heapUsed/1024/1024)}MB`)
+        console.log(`  Rooms: ${rooms.size}/${MAX_ROOMS} | Clients: ${totalPeers} | Strokes: ${totalStrokes}\n`)
       } else if (cmd.startsWith('clear ')) {
         const target = cmd.slice(6).trim().toUpperCase()
         const r = rooms.get(target)
-        if (r) { r.history = []; console.log(`  已清空房间 ${target} 的数据\n`) }
-        else console.log(`  房间 ${target} 不存在\n`)
+        if (r) { r.history = []; console.log(`  Cleared room ${target}\n`) }
+        else console.log(`  Room ${target} not found\n`)
       } else if (cmd.startsWith('kick ')) {
         const target = cmd.slice(5).trim().toUpperCase()
         const r = rooms.get(target)
         if (r) {
-          r.peers.forEach((c) => { try { c.close(4000, '管理员踢出') } catch (_) {} })
-          console.log(`  已踢出房间 ${target} 的所有客户端\n`)
-        } else console.log(`  房间 ${target} 不存在\n`)
+          const peers = Array.from(r.peers)
+          peers.forEach((c) => { try { c.close(4000, 'kicked') } catch (_) {} })
+          console.log(`  Kicked all clients from room ${target}\n`)
+        } else console.log(`  Room ${target} not found\n`)
       } else if (cmd === 'exit' || cmd === 'quit') {
-        console.log('  正在关闭服务器...\n')
-        rooms.forEach((r) => { r.peers.forEach((c) => { try { c.close() } catch (_) {} }) })
+        console.log('  Shutting down...\n')
+        rooms.forEach((r) => { Array.from(r.peers).forEach((c) => { try { c.close() } catch (_) {} }) })
         rl.close()
         process.exit(0)
       } else if (cmd) {
-        console.log(`  未知命令: ${cmd}，输入 help 查看帮助\n`)
+        console.log(`  Unknown: ${cmd}. Type help for commands.\n`)
       }
       rl.prompt()
     })
-  })
+  }).catch((e) => console.error('[CLI] Failed to init:', e.message))
 }
 
 /* ── WebSocket ── */
@@ -77,17 +84,19 @@ const rooms = new Map()
 
 function destroyRoom(room, r) {
   clearTimeout(r.timer)
+  const current = rooms.get(room)
+  if (current !== r) return // Stale closure guard
   rooms.delete(room)
-  console.log(`  - 房间 ${room}  已销毁 (超时)`)
+  console.log(`  - Room ${room} destroyed (timeout)`)
 }
 
-const wss = new WebSocketServer({ noServer: true })
+const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MSG_SIZE })
 wss.on('connection', (ws, req) => {
-  const url = new URL(req.url, 'http://localhost')
-  const room = (url.searchParams.get('room') || 'default').toUpperCase()
+  const roomRaw = new URL(req.url, 'http://localhost').searchParams.get('room') || 'default'
+  const room = roomRaw.slice(0, MAX_ROOM_NAME).toUpperCase()
 
   if (!rooms.has(room) && rooms.size >= MAX_ROOMS) {
-    ws.close(4002, '房间已满')
+    ws.close(4002, 'room full')
     return
   }
 
@@ -95,38 +104,46 @@ wss.on('connection', (ws, req) => {
   if (!r) {
     r = { peers: new Set(), history: [], timer: null, createdAt: Date.now() }
     rooms.set(room, r)
-    console.log(`  + 房间 ${room}  已创建  [${rooms.size}/${MAX_ROOMS}]`)
+    console.log(`  + Room ${room} created [${rooms.size}/${MAX_ROOMS}]`)
   } else {
     clearTimeout(r.timer)
     r.timer = null
   }
 
   r.peers.add(ws)
-  console.log(`  + 房间 ${room}  客户端加入  (${r.peers.size} 人)`)
+  console.log(`  + Room ${room} client joined (${r.peers.size} peers)`)
 
-  if (r.history.length > 0) {
-    ws.send(JSON.stringify({ type: 'sync', history: r.history }))
+  if (r.history.length) {
+    try { ws.send(JSON.stringify({ type: 'sync', history: r.history })) } catch (_) {}
   }
 
   ws.on('message', (data) => {
-    const msg = data.toString()
-    r.history.push(msg)
-    if (r.history.length > 10000) r.history = r.history.slice(-5000)
-    r.peers.forEach((c) => { if (c !== ws && c.readyState === 1) c.send(msg) })
+    try {
+      const msg = data.toString().slice(0, MAX_MSG_SIZE)
+      r.history.push(msg)
+      if (r.history.length > 5000) r.history = r.history.slice(-3000)
+      for (const c of r.peers) {
+        if (c !== ws && c.readyState === 1) {
+          try { c.send(msg) } catch (_) { r.peers.delete(c) }
+        }
+      }
+    } catch (_) {}
   })
   ws.on('close', () => {
     r.peers.delete(ws)
     if (r.peers.size === 0) {
       r.timer = setTimeout(() => destroyRoom(room, r), ROOM_TTL)
-      console.log(`  - 房间 ${room}  空闲，10分钟后销毁`)
+      console.log(`  - Room ${room} idle, will destroy in 10min`)
     } else {
-      console.log(`  - 房间 ${room}  客户端离开  (${r.peers.size} 人)`)
+      console.log(`  - Room ${room} client left (${r.peers.size} peers)`)
     }
   })
+  ws.on('error', () => { r.peers.delete(ws) })
 })
 
 /* ── HTTP ── */
 const __dirname = dirname(fileURLToPath(import.meta.url))
+const publicRoot = join(__dirname, 'public') + sep
 const MIME = { '.html':'text/html','.js':'application/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png','.json':'application/json' }
 
 const http = createServer((req, res) => {
@@ -143,33 +160,42 @@ const http = createServer((req, res) => {
   }
   let filePath = req.url.split('?')[0]
   filePath = filePath === '/' ? '/index.html' : filePath
-  const fullPath = join(__dirname, 'public', filePath)
-  if (existsSync(fullPath)) {
-    res.writeHead(200, { 'Content-Type': MIME[extname(fullPath)] || 'application/octet-stream' })
-    res.end(readFileSync(fullPath))
-  } else {
-    res.writeHead(404); res.end('Not found')
-  }
+  // Path traversal protection
+  const normalized = normalize(filePath)
+  if (normalized.includes('..')) { res.writeHead(403); res.end('Forbidden'); return }
+  const fullPath = join(publicRoot, normalized)
+  if (!fullPath.startsWith(publicRoot)) { res.writeHead(403); res.end('Forbidden'); return }
+
+  readFile(fullPath, (err, data) => {
+    if (err) { res.writeHead(404); res.end('Not found') }
+    else {
+      res.writeHead(200, { 'Content-Type': MIME[extname(fullPath)] || 'application/octet-stream' })
+      res.end(data)
+    }
+  })
+})
+
+http.on('error', (err) => {
+  console.error('[HTTP] Fatal error:', err.message)
+  process.exit(1)
 })
 
 http.listen(WS_PORT, '0.0.0.0', () => {
   const ifaces = networkInterfaces()
-  console.log('\n═══════════════════════════════════')
-  console.log('  Handwriting Sync 主机已启动')
-  console.log('═══════════════════════════════════')
-  console.log(`  端口: ${WS_PORT}\n`)
-
-  console.log('  --- 局域网地址 (平板连这个) ---')
+  console.log('\n=========================================')
+  console.log('  Handwriting Sync Server started')
+  console.log('=========================================')
+  console.log(`  Port: ${WS_PORT}\n`)
+  console.log('  --- LAN addresses ---')
   for (const [, addrs] of Object.entries(ifaces)) {
     for (const a of addrs) {
       if (a.family === 'IPv4' && !a.internal) {
-        console.log(`  →  http://${a.address}:${WS_PORT}`)
+        console.log(`  ->  http://${a.address}:${WS_PORT}`)
       }
     }
   }
-
-  console.log('\n  客户端打开上述地址即可创建/加入房间')
-  console.log('  输入 help 查看管理命令')
-  console.log('═══════════════════════════════════\n')
+  console.log('\n  Open the above URL on tablets to join.')
+  console.log('  Type help for admin commands.')
+  console.log('=========================================\n')
   setupCLI()
 })

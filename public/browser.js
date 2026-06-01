@@ -10,6 +10,8 @@ let userName = ''
 function $(id) { return document.getElementById(id) }
 function uid() { return `${Date.now()}_${Math.random().toString(36).slice(2,8)}` }
 function genRoom() { const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let s='';for(let i=0;i<6;i++)s+=c[Math.floor(Math.random()*c.length)];return s }
+function escHtml(s) { const d=document.createElement('div');d.textContent=s;return d.innerHTML }
+function setNick(name) { userName = name; USER_ID = `u_${name}_${Date.now().toString(36)}`; const b=$('user-badge');if(b)b.textContent=name }
 
 /* ── 大厅 ── */
 const lobby = $('lobby')
@@ -116,20 +118,17 @@ btnConnectLobby.onclick = async () => {
   if (!getRoom()) { lobbyMsg.textContent = '请输入房间码'; return }
   room = getRoom()
   const nickInput = $('nickname-input')
-  userName = (nickInput?.value?.trim()) || ('用户' + Math.random().toString(36).slice(2,5))
+  setNick((nickInput?.value?.trim()) || ('User' + Math.random().toString(36).slice(2,5)))
   const ok = await connectWS(host)
   if (ok) done(host)
-  else lobbyMsg.textContent = '连接失败，请检查地址和房间码'
+  else lobbyMsg.textContent = 'Cannot connect to host'
 }
 
 btnEnter.onclick = async () => {
   room = getRoom()
-  if (room.length < 4) { lobbyMsg.textContent = '房间码至少 4 位'; return }
+  if (room.length < 4) { lobbyMsg.textContent = 'Room code needs 4+ chars'; return }
   const nickInput = $('nickname-input')
-  userName = (nickInput?.value?.trim()) || ('用户' + Math.random().toString(36).slice(2,5))
-  USER_ID = `u_${userName}_${Date.now().toString(36)}`
-  const userBadge = $('user-badge')
-  if (userBadge) userBadge.textContent = userName
+  setNick((nickInput?.value?.trim()) || ('User' + Math.random().toString(36).slice(2,5)))
   const host = hostInput.value.trim() || location.hostname
   if (host && host !== 'localhost' && host !== '127.0.0.1') {
     const ok = await connectWS(host)
@@ -179,15 +178,17 @@ function setupCanvas() {
   resize()
   window.addEventListener('resize', resize)
 
-  $('btn-pen').onclick = () => { tool='pen'; $('btn-pen').className='on'; $('btn-eraser').className='';cv.mine.fg.className='cross' }
-  $('btn-eraser').onclick = () => { tool='eraser'; $('btn-eraser').className='on'; $('btn-pen').className='';cv.mine.fg.className='' }
-  $('color-picker').oninput = (e) => { color = e.target.value }
-  $('size-slider').oninput = (e) => { size = +e.target.value }
+  const bp = $('btn-pen'), be = $('btn-eraser'), cp = $('color-picker'), ss = $('size-slider')
+  if (bp) bp.onclick = () => { tool='pen'; bp.className='on'; if(be)be.className='';cv.mine.fg.className='cross' }
+  if (be) be.onclick = () => { tool='eraser'; be.className='on'; if(bp)bp.className='';cv.mine.fg.className='' }
+  if (cp) cp.oninput = (e) => { color = e.target.value }
+  if (ss) ss.oninput = (e) => { size = +e.target.value }
 
-  // 添加块菜单
+  // Add block menu
   const menu = document.querySelector('.add-block-menu')
-  $('btn-add-block').onclick = () => { menu.style.display = menu.style.display === 'none' ? 'block' : 'none' }
-  menu.querySelectorAll('div').forEach((el) => {
+  const addBtn = $('btn-add-block')
+  if (addBtn) addBtn.onclick = () => { if (menu) menu.style.display = menu.style.display === 'none' ? 'block' : 'none' }
+  if (menu) menu.querySelectorAll('div').forEach((el) => {
     el.onclick = () => {
       menu.style.display = 'none'
       const type = el.dataset.type
@@ -208,11 +209,12 @@ function setupCanvas() {
       }
     }
   })
-  $('btn-view-both').onclick = () => { $('panel-peer').style.display='';resize();$('btn-view-both').className='on';$('btn-view-mine').className='' }
-  $('btn-view-mine').onclick = () => { $('panel-peer').style.display='none';resize();$('btn-view-mine').className='on';$('btn-view-both').className='' }
-  $('btn-export').onclick = exportNotes
-  $('text-send').onclick = sendText
-  $('text-cancel').onclick = () => { $('text-input').value=''; $('text-overlay').classList.remove('show') }
+  const vBoth = $('btn-view-both'), vMine = $('btn-view-mine'), pp = $('panel-peer')
+  if (vBoth) vBoth.onclick = () => { if(pp)pp.style.display='';resize();vBoth.className='on';if(vMine)vMine.className='' }
+  if (vMine) vMine.onclick = () => { if(pp)pp.style.display='none';resize();vMine.className='on';if(vBoth)vBoth.className='' }
+  if ($('btn-export')) $('btn-export').onclick = exportNotes
+  if ($('text-send')) $('text-send').onclick = sendText
+  if ($('text-cancel')) $('text-cancel').onclick = () => { const ti=$('text-input'); if(ti)ti.value=''; const to=$('text-overlay'); if(to)to.classList.remove('show') }
 
   // 重连按钮
   const btnReconnect = $('btn-reconnect')
@@ -355,8 +357,13 @@ function eraseLocal(board, p) {
 
 function redrawBoard(board) {
   const ctx = cv[board].ctxBg
-  ctx.clearRect(0, 0, cv[board].bg.width, cv[board].bg.height)
+  const c = cv[board].bg
+  const dpr = window.devicePixelRatio || 1
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.clearRect(0, 0, c.width, c.height)
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   strokes[board].forEach((s) => draw(ctx, s.points, s.color, s.size))
+  ctx.restore()
 }
 
 function sendText() {
@@ -440,15 +447,18 @@ function exportNotes() {
         a.download = `${names[idx]}_${ts}.png`
         a.href = URL.createObjectURL(blob)
         a.click()
-        URL.revokeObjectURL(a.href)
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000)
       })
     } else {
-      // SVG - simple path export
-      let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${canvas.width} ${canvas.height}">`
-      svg += `<rect width="${canvas.width}" height="${canvas.height}" fill="white"/>`
+      // SVG export with proper coordinate scaling
+      const exportScale = size / (cv[k].bg.width / (window.devicePixelRatio || 1))
+      const svgSize = size * 1.4
+      let svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+svgSize+' '+svgSize+'" width="'+svgSize+'" height="'+svgSize+'">'
+      svg += '<rect width="'+svgSize+'" height="'+svgSize+'" fill="white"/>'
       strokes[k].forEach((s) => {
-        const d = s.points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x} ${p.y}`).join(' ')
-        svg += `<path d="${d}" stroke="${s.color}" stroke-width="${s.size}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>`
+        const pts = s.points.map((p) => `${p.x*exportScale/(dpr||1)},${p.y*exportScale/(dpr||1)}`).join(' ')
+        svg += '<path d="M'+pts+'" stroke="'+escHtml(s.color)+'" stroke-width="'+(s.size*exportScale/(dpr||1))+
+          '" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>'
       })
       svg += '</svg>'
       const blob = new Blob([svg], { type: 'image/svg+xml' })
@@ -456,7 +466,7 @@ function exportNotes() {
       a.download = `${names[idx]}_${ts}.svg`
       a.href = URL.createObjectURL(blob)
       a.click()
-      URL.revokeObjectURL(a.href)
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000)
     }
   })
 
@@ -478,8 +488,8 @@ function addBlock(type, payload) {
   } else {
     const div = document.createElement('div')
     div.style.padding = '8px 12px'; div.style.margin = '4px 0'; div.style.background = '#fff'; div.style.borderRadius = '6px'; div.style.boxShadow = '0 1px 3px rgba(0,0,0,0.06)'
-    if (type.startsWith('h')) { const lvl = payload.level || 1; div.innerHTML = `<strong style="font-size:${28-lvl*4}px">${payload.text||'(heading ' + lvl + ')'}</strong>` }
-    else if (type === 'todo') { div.innerHTML = `<input type="checkbox" ${payload.checked?'checked':''}> ${payload.text||'(todo)'}` }
+    if (type.startsWith('h')) { const lvl = payload.level || 1; div.innerHTML = '<strong style="font-size:'+(28-lvl*4)+'px">'+escHtml(payload.text||'heading '+lvl)+'</strong>' }
+    else if (type === 'todo') { div.innerHTML = '<input type="checkbox" '+(payload.checked?'checked':'')+'> '+escHtml(payload.text||'todo') }
     else { div.textContent = payload.text || '(text)' }
     wrap.insertBefore(div, wrap.firstChild)
   }
@@ -497,8 +507,8 @@ function handleBlockMsg(msg) {
   } else if (msg.type === 'p' || msg.type === 'todo' || msg.type?.startsWith('h')) {
     const div = document.createElement('div')
     div.style.padding = '8px 12px'; div.style.margin = '4px 0'; div.style.background = '#fff'; div.style.borderRadius = '6px'; div.style.boxShadow = '0 1px 3px rgba(0,0,0,0.06)'
-    if (msg.type.startsWith('h')) { const lvl = msg.payload.level || 1; div.innerHTML = `<strong style="font-size:${28-lvl*4}px">${msg.payload.text||'(h)'}</strong> - <small>${msg.userName||msg.userId}</small>` }
-    else if (msg.type === 'todo') { div.innerHTML = `<input type="checkbox" ${msg.payload.checked?'checked':''} disabled> ${msg.payload.text||''}` }
+    if (msg.type.startsWith('h')) { const lvl = msg.payload.level || 1; div.innerHTML = '<strong style="font-size:'+(28-lvl*4)+'px">'+escHtml(msg.payload.text||'h')+'</strong> - <small>'+escHtml(msg.userName||msg.userId)+'</small>' }
+    else if (msg.type === 'todo') { div.innerHTML = '<input type="checkbox" '+(msg.payload.checked?'checked':'')+' disabled> '+escHtml(msg.payload.text||'') }
     else { div.textContent = (msg.payload.text||'') + ' - ' + (msg.userName||msg.userId) }
     wrap.insertBefore(div, wrap.firstChild)
   }
@@ -530,8 +540,8 @@ function handleBlockMsg(msg) {
       const newScale = Math.min(3, Math.max(0.5, initScale * dist / initDist))
       const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2
       const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2
-      panX = initX + (midX - (initX || midX)); panY = initY + (midY - (initY || midY))
-      wrap.style.transform = `scale(${newScale})`
+      panX = initX + (midX - (initX ?? midX)); panY = initY + (midY - (initY ?? midY))
+      wrap.style.transform = `translate(${panX}px,${panY}px) scale(${newScale})`
       wrap.style.transformOrigin = '0 0'
     }
   }, { passive: false })
