@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no" />
+<meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=0.5,maximum-scale=5,user-scalable=yes" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <title>Handwriting Sync</title>
 <style>
@@ -12,7 +12,7 @@
   --success:#22c55e; --danger:#ef4444;
 }
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);overflow:hidden;height:100dvh;touch-action:none;user-select:none;-webkit-user-select:none}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);overflow:hidden;height:100vh;height:100dvh}
 #app{display:flex;flex-direction:column;height:100dvh}
 
 /* ── 大厅 ── */
@@ -43,8 +43,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 #topbar{display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--panel);border-bottom:1px solid var(--border);flex-shrink:0}
 #room-badge{font-size:12px;font-weight:700;color:var(--accent);background:#f3f0ff;padding:4px 10px;border-radius:6px;letter-spacing:.15em;font-family:monospace;cursor:pointer}
 #status-dot{font-size:11px;padding:4px 10px;border-radius:10px;margin-left:auto}
-.status-ok{color:var(--success);background:#f0fdf4}
-.status-wait{color:#f59e0b;background:#fffbeb}
+.status-ok{color:#166534;background:#dcfce7}
+.status-wait{color:#92400e;background:#fef3c7}
 #toolbar{display:flex;align-items:center;gap:6px;padding:5px 12px;background:var(--panel);border-bottom:1px solid var(--border);flex-shrink:0}
 #toolbar button{padding:5px 12px;border:1px solid #d0d0d0;border-radius:6px;background:#fff;cursor:pointer;font-size:12px}
 #toolbar button:hover{background:#f0f0f0}
@@ -52,13 +52,21 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 #toolbar input[type="color"]{width:28px;height:26px;border:none;cursor:pointer;border-radius:4px}
 #toolbar input[type="range"]{width:80px}
 #panels{display:flex;flex:1;overflow:hidden;gap:10px;padding:10px}
-.panel{flex:1;display:flex;flex-direction:column;background:var(--panel);border-radius:8px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.04);min-width:0}
+.panel{flex:1;display:flex;flex-direction:column;background:#faf8f0;border-radius:8px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.06);min-width:0}
 .panel-header{font-size:11px;font-weight:600;color:var(--sub);padding:5px 10px;border-bottom:1px solid var(--border);letter-spacing:.05em;display:flex;align-items:center;gap:6px}
 .dot{width:6px;height:6px;border-radius:50%}
 .dot-mine{background:var(--accent)}
 .dot-peer{background:var(--success)}
-.canvas-wrap{flex:1;position:relative;overflow:hidden}
-canvas{position:absolute;top:0;left:0}
+.canvas-wrap{flex:1;position:relative;overflow:hidden;background:#faf8f0;pointer-events:none}
+.canvas-wrap .block-item{pointer-events:auto;position:relative;z-index:10}
+.canvas-wrap canvas{pointer-events:auto}
+/* 纸张样式 */
+.canvas-wrap > canvas {
+  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  touch-action:none; user-select:none; -webkit-user-select:none;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04);
+  border-radius: 2px;
+}
 canvas.cross{cursor:crosshair}
 
 #text-overlay{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:14px;box-shadow:0 4px 24px rgba(0,0,0,.1);z-index:100;width:280px}
@@ -68,7 +76,7 @@ canvas.cross{cursor:crosshair}
 
 @media (max-width:600px){
   #panels{flex-direction:column;gap:6px;padding:4px}
-  .panel{flex:none;height:42dvh}
+  .panel{flex:none;height:40vh;height:40dvh;overflow:auto}
 }
 </style>
 </head>
@@ -138,6 +146,13 @@ canvas.cross{cursor:crosshair}
       <input type="color" id="color-picker" value="#1a1a1a" />
       <input type="range" id="size-slider" min="1" max="20" value="3" />
       <span style="flex:1"></span>
+      <button id="btn-prev-page" title="上一页">&lt;</button>
+      <span id="page-indicator" style="font-size:12px;color:var(--sub);min-width:60px;text-align:center">1/1</span>
+      <button id="btn-next-page" title="下一页">&gt;</button>
+      <button id="btn-add-page" title="新建页">+</button>
+      <select id="page-size-sel" style="font-size:11px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;margin-left:4px">
+        <option>A4</option><option>A5</option><option>Letter</option><option>Square</option><option>Auto</option>
+      </select>
       <button id="btn-view-both" class="on">双页</button>
       <button id="btn-view-mine">我的</button>
       <button id="btn-export" style="margin-left:8px">导出</button>

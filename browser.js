@@ -3,13 +3,21 @@
  */
 
 const WS_PORT = 3000
-const PAGE_ID = 'page_default'
 let USER_ID = `u_${Date.now().toString(36)}`
 let userName = ''
+// Multi-page system
+const PAGE_SIZES = { A4: { w: 595, h: 842 }, A5: { w: 420, h: 595 }, Letter: { w: 612, h: 792 }, Square: { w: 600, h: 600 }, Auto: null }
+let pages = [{ id: 'page_1', name: 'Page 1', size: 'A4', strokes: new Map() }]
+let currentPage = 0
+function getPageId() { return pages[currentPage]?.id || 'page_1' }
+function getStrokes() { return pages[currentPage]?.strokes || pages[0].strokes }
+function getPageSize() { const s = pages[currentPage]?.size || 'A4'; return PAGE_SIZES[s] || PAGE_SIZES.Auto }
 
 function $(id) { return document.getElementById(id) }
 function uid() { return `${Date.now()}_${Math.random().toString(36).slice(2,8)}` }
 function genRoom() { const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let s='';for(let i=0;i<6;i++)s+=c[Math.floor(Math.random()*c.length)];return s }
+function escHtml(s) { const d=document.createElement('div');d.textContent=s;return d.innerHTML }
+function setNick(name) { userName = name; USER_ID = `u_${name}_${Date.now().toString(36)}`; const b=$('user-badge');if(b)b.textContent=name }
 
 /* ── 大厅 ── */
 const lobby = $('lobby')
@@ -47,29 +55,6 @@ joinInput.oninput = () => {
 }
 
 function getRoom() { return isCreate ? createInput.value.trim().toUpperCase() || genRoom() : joinInput.value.trim().toUpperCase() }
-
-function connectWS(host) {
-  return new Promise((resolve, reject) => {
-    if (ws) { ws.close(); ws = null }
-    if (!room) { reject('no room'); return }
-    const url = `ws://${host}:${WS_PORT}?room=${encodeURIComponent(room)}`
-    lobbyMsg.textContent = '连接中...'
-    ws = new WebSocket(url)
-    ws.onopen = () => {
-      lobbyMsg.textContent = '已连接'; connectedHost = host; resolve(true)
-      if (statusDot) { statusDot.textContent = '已连接'; statusDot.className = 'status-ok'; $('btn-reconnect').style.display = 'none' }
-    }
-    ws.onerror = () => {
-      lobbyMsg.textContent = '连接失败'; ws = null; resolve(false)
-      if (statusDot) { statusDot.textContent = '已断开'; statusDot.className = 'status-wait'; $('btn-reconnect').style.display = '' }
-    }
-    ws.onclose = () => {
-      if (ws) { lobbyMsg.textContent = '已断开'; ws = null }
-      if (statusDot) { statusDot.textContent = '已断开'; statusDot.className = 'status-wait'; $('btn-reconnect').style.display = '' }
-    }
-    setTimeout(() => { if (ws?.readyState !== WebSocket.OPEN) { ws = null; resolve(false) } }, 3000)
-  })
-}
 
 async function doScan() {
   btnScan.textContent = '...'; btnScan.disabled = true; lobbyMsg.textContent = '扫描中...'
@@ -116,20 +101,17 @@ btnConnectLobby.onclick = async () => {
   if (!getRoom()) { lobbyMsg.textContent = '请输入房间码'; return }
   room = getRoom()
   const nickInput = $('nickname-input')
-  userName = (nickInput?.value?.trim()) || ('用户' + Math.random().toString(36).slice(2,5))
+  setNick((nickInput?.value?.trim()) || ('User' + Math.random().toString(36).slice(2,5)))
   const ok = await connectWS(host)
   if (ok) done(host)
-  else lobbyMsg.textContent = '连接失败，请检查地址和房间码'
+  else lobbyMsg.textContent = 'Cannot connect to host'
 }
 
 btnEnter.onclick = async () => {
   room = getRoom()
-  if (room.length < 4) { lobbyMsg.textContent = '房间码至少 4 位'; return }
+  if (room.length < 4) { lobbyMsg.textContent = 'Room code needs 4+ chars'; return }
   const nickInput = $('nickname-input')
-  userName = (nickInput?.value?.trim()) || ('用户' + Math.random().toString(36).slice(2,5))
-  USER_ID = `u_${userName}_${Date.now().toString(36)}`
-  const userBadge = $('user-badge')
-  if (userBadge) userBadge.textContent = userName
+  setNick((nickInput?.value?.trim()) || ('User' + Math.random().toString(36).slice(2,5)))
   const host = hostInput.value.trim() || location.hostname
   if (host && host !== 'localhost' && host !== '127.0.0.1') {
     const ok = await connectWS(host)
@@ -179,15 +161,17 @@ function setupCanvas() {
   resize()
   window.addEventListener('resize', resize)
 
-  $('btn-pen').onclick = () => { tool='pen'; $('btn-pen').className='on'; $('btn-eraser').className='';cv.mine.fg.className='cross' }
-  $('btn-eraser').onclick = () => { tool='eraser'; $('btn-eraser').className='on'; $('btn-pen').className='';cv.mine.fg.className='' }
-  $('color-picker').oninput = (e) => { color = e.target.value }
-  $('size-slider').oninput = (e) => { size = +e.target.value }
+  const bp = $('btn-pen'), be = $('btn-eraser'), cp = $('color-picker'), ss = $('size-slider')
+  if (bp) bp.onclick = () => { tool='pen'; bp.className='on'; if(be)be.className='';cv.mine.fg.className='cross' }
+  if (be) be.onclick = () => { tool='eraser'; be.className='on'; if(bp)bp.className='';cv.mine.fg.className='' }
+  if (cp) cp.oninput = (e) => { color = e.target.value }
+  if (ss) ss.oninput = (e) => { size = +e.target.value }
 
-  // 添加块菜单
+  // Add block menu
   const menu = document.querySelector('.add-block-menu')
-  $('btn-add-block').onclick = () => { menu.style.display = menu.style.display === 'none' ? 'block' : 'none' }
-  menu.querySelectorAll('div').forEach((el) => {
+  const addBtn = $('btn-add-block')
+  if (addBtn) addBtn.onclick = () => { if (menu) menu.style.display = menu.style.display === 'none' ? 'block' : 'none' }
+  if (menu) menu.querySelectorAll('div').forEach((el) => {
     el.onclick = () => {
       menu.style.display = 'none'
       const type = el.dataset.type
@@ -208,11 +192,46 @@ function setupCanvas() {
       }
     }
   })
-  $('btn-view-both').onclick = () => { $('panel-peer').style.display='';resize();$('btn-view-both').className='on';$('btn-view-mine').className='' }
-  $('btn-view-mine').onclick = () => { $('panel-peer').style.display='none';resize();$('btn-view-mine').className='on';$('btn-view-both').className='' }
-  $('btn-export').onclick = exportNotes
-  $('text-send').onclick = sendText
-  $('text-cancel').onclick = () => { $('text-input').value=''; $('text-overlay').classList.remove('show') }
+  const vBoth = $('btn-view-both'), vMine = $('btn-view-mine'), pp = $('panel-peer')
+  if (vBoth) vBoth.onclick = () => { if(pp)pp.style.display='';resize();vBoth.className='on';if(vMine)vMine.className='' }
+  if (vMine) vMine.onclick = () => { if(pp)pp.style.display='none';resize();vMine.className='on';if(vBoth)vBoth.className='' }
+  if ($('btn-export')) $('btn-export').onclick = exportNotes
+  if ($('text-send')) $('text-send').onclick = sendText
+  if ($('text-cancel')) $('text-cancel').onclick = () => { const ti=$('text-input'); if(ti)ti.value=''; const to=$('text-overlay'); if(to)to.classList.remove('show') }
+
+  // Page management
+  const updatePageIndicator = () => {
+    const ind = $('page-indicator'); if (ind) ind.textContent = `${currentPage+1}/${pages.length}`
+    const ps = $('page-size-sel'); if (ps) ps.value = pages[currentPage]?.size || 'A4'
+  }
+  const goToPage = (idx) => {
+    if (idx < 0 || idx >= pages.length) return
+    currentPage = idx
+    updatePageIndicator()
+    // Clear and reload canvas for this page
+    const ctx = cv.mine.ctxBg
+    if (ctx) { ctx.save(); ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,cv.mine.bg.width,cv.mine.bg.height); ctx.restore() }
+    if (ctx) getStrokes().forEach((s) => draw(ctx, s.points, s.color, s.size))
+    resize()
+  }
+  const addPage = () => {
+    const idx = pages.length
+    pages.push({ id: `page_${idx+1}`, name: `Page ${idx+1}`, size: pages[currentPage]?.size || 'A4', strokes: new Map() })
+    currentPage = idx
+    updatePageIndicator()
+    const ctx = cv.mine.ctxBg
+    if (ctx) { ctx.save(); ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,cv.mine.bg.width,cv.mine.bg.height); ctx.restore() }
+    resize()
+  }
+  const bpPage = $('btn-prev-page'), bnPage = $('btn-next-page'), baPage = $('btn-add-page'), psSel = $('page-size-sel')
+  if (bpPage) bpPage.onclick = () => goToPage(currentPage - 1)
+  if (bnPage) bnPage.onclick = () => goToPage(currentPage + 1)
+  if (baPage) baPage.onclick = addPage
+  if (psSel) psSel.onchange = () => {
+    pages[currentPage].size = psSel.value
+    resize()
+  }
+  updatePageIndicator()
 
   // 重连按钮
   const btnReconnect = $('btn-reconnect')
@@ -283,7 +302,20 @@ function resize() {
     const wrap = document.getElementById(`wrap-${k}`)
     if (!wrap) continue
     const dpr = devicePixelRatio || 1
-    const w = wrap.clientWidth, h = wrap.clientHeight
+    let w = wrap.clientWidth, h = wrap.clientHeight
+    const ps = getPageSize()
+    if (ps) {
+      // Fixed page size: constrain aspect ratio and center
+      const ratio = ps.w / ps.h
+      if (w / h > ratio) w = h * ratio
+      else h = w / ratio
+      // Scale down to 85% of container for visible margin
+      const scale = Math.min((wrap.clientWidth * 0.85) / w, (wrap.clientHeight * 0.85) / h, 1)
+      w = Math.floor(w * scale); h = Math.floor(h * scale)
+      wrap.style.display = 'flex'; wrap.style.alignItems = 'center'; wrap.style.justifyContent = 'center'
+    } else {
+      wrap.style.display = ''; wrap.style.alignItems = ''; wrap.style.justifyContent = ''
+    }
     for (const layer of ['bg', 'fg']) {
       const c = cv[k][layer]
       c.width = w * dpr; c.height = h * dpr
@@ -312,6 +344,7 @@ function setupPointer(board) {
     if (e.pointerType === 'touch' && e.pressure === 0) return
     if (board === 'peer') return
     e.preventDefault(); isDrawing = true; points = [pt(e, board)]
+    try { fg.setPointerCapture(e.pointerId) } catch (_) {}
     if (tool === 'pen') ctxFg.clearRect(0, 0, fg.width, fg.height)
   }
   fg.onpointermove = (e) => {
@@ -324,8 +357,8 @@ function setupPointer(board) {
     if (!isDrawing || board === 'peer') return; isDrawing = false
     if (tool === 'pen' && points.length > 0) {
       const id = uid()
-      const msg = { id, type:'stroke', payload:{ points: [...points], color, size }, pageId:PAGE_ID, userId:USER_ID, userName, ts:Date.now(), source:USER_ID }
-      draw(ctxBg, points, color, size); strokes.mine.set(id, { points: [...points], color, size }); sendWS(msg); saveStroke(id, [...points], color, size)
+      const msg = { id, type:'stroke', payload:{ points: [...points], color, size }, pageId:getPageId(), userId:USER_ID, userName, ts:Date.now(), source:USER_ID }
+      draw(ctxBg, points, color, size); getStrokes().set(id, { points: [...points], color, size }); sendWS(msg); saveStroke(id, [...points], color, size)
       ctxFg.clearRect(0, 0, fg.width, fg.height)
     }
     points = []
@@ -342,27 +375,32 @@ function draw(ctx, pts, c, s) {
 }
 
 function eraseLocal(board, p) {
-  const store = board === 'mine' ? strokes.mine : strokes.peer
+  const store = board === 'mine' ? getStrokes() : strokes.peer
   const ctx = cv[board].ctxBg
   const hit = []
   store.forEach((s, id) => { if (s.points.some((q) => (q.x-p.x)**2 + (q.y-p.y)**2 < 144)) hit.push(id) })
   if (hit.length) {
     hit.forEach((id) => { store.delete(id); if (board==='mine') deleteStroke(id) })
-    sendWS({ type:'erase', payload:{ strokeIds:hit }, pageId:PAGE_ID, userId:USER_ID, userName, id:uid(), ts:Date.now(), source:USER_ID })
+    sendWS({ type:'erase', payload:{ strokeIds:hit }, pageId:getPageId(), userId:USER_ID, userName, id:uid(), ts:Date.now(), source:USER_ID })
     redrawBoard(board)
   }
 }
 
 function redrawBoard(board) {
   const ctx = cv[board].ctxBg
-  ctx.clearRect(0, 0, cv[board].bg.width, cv[board].bg.height)
+  const c = cv[board].bg
+  const dpr = window.devicePixelRatio || 1
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.clearRect(0, 0, c.width, c.height)
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   strokes[board].forEach((s) => draw(ctx, s.points, s.color, s.size))
+  ctx.restore()
 }
 
 function sendText() {
   const txt = $('text-input').value.trim()
   if (!txt) return
-  const msg = { id:uid(), type:'text', payload:{ content:txt, x:100, y:100 }, pageId:PAGE_ID, userId:USER_ID, ts:Date.now(), source:USER_ID }
+  const msg = { id:uid(), type:'text', payload:{ content:txt, x:100, y:100 }, pageId:getPageId(), userId:USER_ID, ts:Date.now(), source:USER_ID }
   sendWS(msg)
   const ctx = cv.mine.ctxBg; ctx.save(); ctx.font = '16px system-ui'; ctx.fillStyle = '#1a1a1a'; ctx.fillText(txt, 100, 100); ctx.restore()
   $('text-input').value = ''; $('text-overlay').classList.remove('show')
@@ -370,17 +408,68 @@ function sendText() {
 
 function sendWS(msg) { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg)) }
 
-/* ── IndexedDB ── */
-function idb() { return new Promise((ok,no)=>{const r=indexedDB.open('handwriting_sync',2);r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains('strokes'))r.result.createObjectStore('strokes',{keyPath:'id'})};r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)}) }
-async function saveStroke(id, pts, c, s) { try { const d=await idb();d.transaction('strokes','readwrite').objectStore('strokes').put({id,pageId:PAGE_ID,userId:USER_ID,points:pts,color:c,size:s,ts:Date.now()}) } catch(_) {} }
+/* ── IndexedDB (singleton) ── */
+let _idb = null, _idbPromise = null
+function idb() {
+  if (_idb) return Promise.resolve(_idb)
+  if (!_idbPromise) {
+    _idbPromise = new Promise((ok,no)=>{
+      const r=indexedDB.open('handwriting_sync',3)
+      r.onupgradeneeded=()=>{
+        const d=r.result
+        if(!d.objectStoreNames.contains('strokes'))d.createObjectStore('strokes',{keyPath:'id'})
+        if(!d.objectStoreNames.contains('texts'))d.createObjectStore('texts',{keyPath:'id'})
+      }
+      r.onsuccess=()=>{_idb=r.result;ok(_idb)}
+      r.onerror=()=>no(r.error)
+    })
+  }
+  return _idbPromise
+}
+async function saveStroke(id, pts, c, s) { try { const d=await idb();d.transaction('strokes','readwrite').objectStore('strokes').put({id,pageId:getPageId(),userId:USER_ID,points:pts,color:c,size:s,ts:Date.now()}) } catch(_) {} }
 async function deleteStroke(id) { try { const d=await idb();d.transaction('strokes','readwrite').objectStore('strokes').delete(id) } catch(_) {} }
-;(async function load() {
-  try {
-    const d = await idb()
-    const req = d.transaction('strokes','readonly').objectStore('strokes').getAll()
-    req.onsuccess = () => req.result.sort((a,b)=>a.ts-b.ts).forEach((s)=>{strokes.mine.set(s.id,s);cv.mine.ctxBg&&draw(cv.mine.ctxBg,s.points,s.color,s.size)})
-  } catch(_) {}
-})()
+async function saveTextBlock(id, content, x, y) { try { const d=await idb();d.transaction('texts','readwrite').objectStore('texts').put({id,pageId:getPageId(),userId:USER_ID,content,x,y,ts:Date.now()}) } catch(_) {} }
+
+// Load saved strokes on startup
+idb().then((d) => {
+  const req = d.transaction('strokes','readonly').objectStore('strokes').getAll()
+  req.onsuccess = () => req.result.sort((a,b)=>a.ts-b.ts).forEach((s)=>{getStrokes().set(s.id,s);if(cv.mine.ctxBg)draw(cv.mine.ctxBg,s.points,s.color,s.size)})
+}).catch(()=>{})
+
+/* ── connectWS race fix ── */
+let _connectId = 0
+function connectWS(host) {
+  const cid = ++_connectId
+  return new Promise((resolve) => {
+    if (ws) { try { ws.close() } catch(_) {}; ws = null }
+    if (!room) { resolve(false); return }
+    const url = `ws://${host}:${WS_PORT}?room=${encodeURIComponent(room)}`
+    lobbyMsg.textContent = 'Connecting...'
+    ws = new WebSocket(url)
+    let settled = false
+    ws.onopen = () => {
+      if (settled || cid !== _connectId) return
+      settled = true; connectedHost = host; resolve(true)
+      lobbyMsg.textContent = 'Connected'
+      if (statusDot) { statusDot.textContent = 'Connected'; statusDot.className = 'status-ok'; const rb=$('btn-reconnect');if(rb)rb.style.display='none' }
+    }
+    ws.onerror = () => {
+      if (settled) return
+      settled = true; ws = null; resolve(false)
+      lobbyMsg.textContent = 'Connection failed'
+      if (statusDot) { statusDot.textContent = 'Disconnected'; statusDot.className = 'status-wait'; const rb=$('btn-reconnect');if(rb)rb.style.display='' }
+    }
+    ws.onclose = () => {
+      if (settled) return
+      ws = null
+      if (statusDot) { statusDot.textContent = 'Disconnected'; statusDot.className = 'status-wait'; const rb=$('btn-reconnect');if(rb)rb.style.display='' }
+    }
+    ws.onmessage = handleWS
+    setTimeout(() => {
+      if (!settled && cid === _connectId) { settled = true; ws = null; resolve(false); lobbyMsg.textContent = 'Timed out' }
+    }, 5000)
+  })
+}
 
 // URL 直连
 const urlRoom = new URLSearchParams(location.search).get('room')
@@ -412,7 +501,7 @@ function exportNotes() {
     canvas.height = size * 1.4
     const ctx = canvas.getContext('2d')
     ctx.scale(dpr, dpr)
-    ctx.fillStyle = '#ffffff'
+    ctx.fillStyle = '#faf8f0'
     ctx.fillRect(0, 0, canvas.width / dpr, canvas.height / dpr)
 
     // 重绘大分辨率
@@ -440,15 +529,18 @@ function exportNotes() {
         a.download = `${names[idx]}_${ts}.png`
         a.href = URL.createObjectURL(blob)
         a.click()
-        URL.revokeObjectURL(a.href)
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000)
       })
     } else {
-      // SVG - simple path export
-      let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${canvas.width} ${canvas.height}">`
-      svg += `<rect width="${canvas.width}" height="${canvas.height}" fill="white"/>`
+      // SVG export with proper coordinate scaling
+      const exportScale = size / (cv[k].bg.width / (window.devicePixelRatio || 1))
+      const svgSize = size * 1.4
+      let svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+svgSize+' '+svgSize+'" width="'+svgSize+'" height="'+svgSize+'">'
+      svg += '<rect width="'+svgSize+'" height="'+svgSize+'" fill="#faf8f0"/>'
       strokes[k].forEach((s) => {
-        const d = s.points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x} ${p.y}`).join(' ')
-        svg += `<path d="${d}" stroke="${s.color}" stroke-width="${s.size}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>`
+        const pts = s.points.map((p) => `${p.x*exportScale/(dpr||1)},${p.y*exportScale/(dpr||1)}`).join(' ')
+        svg += '<path d="M'+pts+'" stroke="'+escHtml(s.color)+'" stroke-width="'+(s.size*exportScale/(dpr||1))+
+          '" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>'
       })
       svg += '</svg>'
       const blob = new Blob([svg], { type: 'image/svg+xml' })
@@ -456,7 +548,7 @@ function exportNotes() {
       a.download = `${names[idx]}_${ts}.svg`
       a.href = URL.createObjectURL(blob)
       a.click()
-      URL.revokeObjectURL(a.href)
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000)
     }
   })
 
@@ -464,85 +556,119 @@ function exportNotes() {
 }
 
 /* ── 块操作 ── */
-function addBlock(type, payload) {
-  const id = uid()
-  const msg = { id, type, payload, pageId: PAGE_ID, userId: USER_ID, userName, ts: Date.now(), source: USER_ID }
-  sendWS(msg)
-  // 本地渲染
-  const wrap = document.getElementById('wrap-mine')
-  if (!wrap) return
+function sendBlockUpdate(id, text, checked) {
+  sendWS({ type:'block_update', blockId:id, payload:{ text, checked }, pageId:getPageId(), userId:USER_ID, id:uid(), ts:Date.now(), source:USER_ID })
+}
+
+function makeBlock(id, type, payload, readOnly) {
+  const div = document.createElement('div')
+  div.className = 'block-item'; div.dataset.blockId = id; div.dataset.blockType = type
+  div.style.cssText = 'padding:6px 10px;margin:3px 0;background:#fff;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,0.06);display:flex;align-items:flex-start;gap:6px;position:relative;pointer-events:auto;touch-action:manipulation'
+
+  // Drag handle for repositioning
+  if (!readOnly) {
+    const grip = document.createElement('span')
+    grip.textContent = '≡'; grip.style.cssText = 'cursor:grab;color:#ccc;font-size:16px;line-height:1;user-select:none;padding:2px 0;touch-action:none'
+    grip.onpointerdown = (e) => {
+      e.stopPropagation(); e.preventDefault()
+      const startY = e.clientY; const startTop = div.offsetTop
+      const move = (ev) => { div.style.position = 'relative'; div.style.top = (startTop + ev.clientY - startY) + 'px' }
+      const up = () => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up) }
+      document.addEventListener('pointermove', move)
+      document.addEventListener('pointerup', up)
+    }
+    div.appendChild(grip)
+  }
+
   if (type === 'img') {
     const img = document.createElement('img')
     img.src = payload.src; img.style.maxWidth = '100%'; img.style.maxHeight = '300px'; img.style.borderRadius = '6px'
-    wrap.appendChild(img)
-  } else {
-    const div = document.createElement('div')
-    div.style.padding = '8px 12px'; div.style.margin = '4px 0'; div.style.background = '#fff'; div.style.borderRadius = '6px'; div.style.boxShadow = '0 1px 3px rgba(0,0,0,0.06)'
-    if (type.startsWith('h')) { const lvl = payload.level || 1; div.innerHTML = `<strong style="font-size:${28-lvl*4}px">${payload.text||'(heading ' + lvl + ')'}</strong>` }
-    else if (type === 'todo') { div.innerHTML = `<input type="checkbox" ${payload.checked?'checked':''}> ${payload.text||'(todo)'}` }
-    else { div.textContent = payload.text || '(text)' }
-    wrap.insertBefore(div, wrap.firstChild)
+    div.appendChild(img)
+    if (!readOnly) {
+      const del = document.createElement('button'); del.textContent = 'x'
+      del.style.cssText = 'position:absolute;top:2px;right:2px;background:#ef4444;color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:11px;cursor:pointer;z-index:1'
+      del.onclick = (e) => { e.stopPropagation(); div.remove(); sendWS({ type:'block_delete', blockId:id, pageId:getPageId(), userId:USER_ID, id:uid(), ts:Date.now(), source:USER_ID }) }
+      div.appendChild(del)
+    }
+    return div
   }
+
+  if (type === 'todo') {
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = payload.checked || false
+    cb.style.cssText = 'width:18px;height:18px;flex-shrink:0;margin-top:2px'
+    if (!readOnly) cb.onchange = () => sendBlockUpdate(id, null, cb.checked)
+    div.appendChild(cb)
+  }
+
+  let input
+  const baseStyle = 'flex:1;border:none;outline:none;background:transparent;font-family:inherit;padding:2px 0;pointer-events:auto;min-height:24px'
+  if (type === 'p') {
+    input = document.createElement('textarea')
+    input.setAttribute('inputmode', 'text'); input.rows = 1
+    input.style.cssText = baseStyle + ';font-size:14px;resize:none;overflow:hidden'
+    input.placeholder = 'Type here...'; input.value = payload.text || ''
+    input.oninput = () => { input.style.height = 'auto'; input.style.height = Math.max(24, input.scrollHeight) + 'px' }
+    setTimeout(() => { input.style.height = 'auto'; input.style.height = Math.max(24, input.scrollHeight) + 'px' }, 0)
+  } else {
+    input = document.createElement('input')
+    input.type = 'text'; input.setAttribute('inputmode', 'text')
+    input.style.cssText = baseStyle + ';font-size:' + (type.startsWith('h') ? (28 - (parseInt(type[1]) || 1) * 4) : 14) + 'px'
+    if (type.startsWith('h')) { input.style.fontWeight = 'bold'; input.placeholder = 'Heading ' + (parseInt(type[1]) || 1) }
+    else { input.placeholder = 'Type...' }
+    input.value = payload.text || ''
+  }
+  if (input) {
+    input.readOnly = !!readOnly
+    input.style.pointerEvents = 'auto'
+    if (!readOnly) {
+      let debounce
+      input.oninput = () => { clearTimeout(debounce); debounce = setTimeout(() => { sendBlockUpdate(id, input.value, type==='todo' ? div.querySelector('input[type=checkbox]')?.checked : undefined) }, 300) }
+      input.onblur = () => { clearTimeout(debounce); sendBlockUpdate(id, input.value, type==='todo' ? div.querySelector('input[type=checkbox]')?.checked : undefined) }
+    }
+    div.appendChild(input)
+  }
+  return div
 }
 
-// Handle incoming block messages
+function addBlock(type, payload) {
+  const id = uid()
+  const msg = { id, type:'block_add', blockType:type, payload, pageId:getPageId(), userId:USER_ID, userName, ts:Date.now(), source:USER_ID }
+  sendWS(msg)
+  const wrap = document.getElementById('wrap-mine')
+  if (!wrap) return
+  const el = makeBlock(id, type, payload, false)
+  wrap.insertBefore(el, wrap.firstChild)
+}
+
 function handleBlockMsg(msg) {
-  if (msg.source === USER_ID) return
   const wrap = document.getElementById('wrap-peer')
   if (!wrap) return
-  if (msg.type === 'img') {
-    const img = document.createElement('img')
-    img.src = msg.payload.src; img.style.maxWidth = '100%'; img.style.maxHeight = '300px'; img.style.borderRadius = '6px'
-    wrap.insertBefore(img, wrap.firstChild)
-  } else if (msg.type === 'p' || msg.type === 'todo' || msg.type?.startsWith('h')) {
-    const div = document.createElement('div')
-    div.style.padding = '8px 12px'; div.style.margin = '4px 0'; div.style.background = '#fff'; div.style.borderRadius = '6px'; div.style.boxShadow = '0 1px 3px rgba(0,0,0,0.06)'
-    if (msg.type.startsWith('h')) { const lvl = msg.payload.level || 1; div.innerHTML = `<strong style="font-size:${28-lvl*4}px">${msg.payload.text||'(h)'}</strong> - <small>${msg.userName||msg.userId}</small>` }
-    else if (msg.type === 'todo') { div.innerHTML = `<input type="checkbox" ${msg.payload.checked?'checked':''} disabled> ${msg.payload.text||''}` }
-    else { div.textContent = (msg.payload.text||'') + ' - ' + (msg.userName||msg.userId) }
-    wrap.insertBefore(div, wrap.firstChild)
+  if (msg.type === 'block_add') {
+    if (msg.source === USER_ID) return
+    const el = makeBlock(msg.id, msg.blockType, msg.payload, true)
+    const label = document.createElement('small')
+    label.textContent = ' - ' + (msg.userName || msg.userId)
+    label.style.fontSize = '10px'; label.style.color = '#888'; label.style.alignSelf = 'center'
+    el.appendChild(label)
+    wrap.insertBefore(el, wrap.firstChild)
+  } else if (msg.type === 'block_update') {
+    const existing = wrap.querySelector('[data-block-id="'+msg.blockId+'"]')
+    if (existing) {
+      const input = existing.querySelector('input[type="text"],textarea')
+      if (input && msg.payload.text !== undefined) input.value = msg.payload.text
+      const cb = existing.querySelector('input[type="checkbox"]')
+      if (cb && msg.payload.checked !== undefined) cb.checked = msg.payload.checked
+    }
+  } else if (msg.type === 'block_delete') {
+    const el = wrap.querySelector('[data-block-id="'+msg.blockId+'"]')
+    if (el) el.remove()
   }
 }
 
 
 /* ── 触摸手势 (双指缩放/平移) ── */
-;(function setupGestures() {
-  let initDist = 0, initScale = 1, initX = 0, initY = 0, panX = 0, panY = 0
-  const wrap = document.getElementById('wrap-mine')
-  if (!wrap) return
-
-  wrap.addEventListener('touchstart', (e) => {
-    if (e.touches.length === 2) {
-      const dx = e.touches[0].clientX - e.touches[1].clientX
-      const dy = e.touches[0].clientY - e.touches[1].clientY
-      initDist = Math.hypot(dx, dy)
-      initScale = parseFloat(wrap.style.transform?.match(/scale\(([\d.]+)\)/)?.[1] || 1)
-      initX = panX; initY = panY
-    }
-  }, { passive: false })
-
-  wrap.addEventListener('touchmove', (e) => {
-    if (e.touches.length === 2) {
-      e.preventDefault()
-      const dx = e.touches[0].clientX - e.touches[1].clientX
-      const dy = e.touches[0].clientY - e.touches[1].clientY
-      const dist = Math.hypot(dx, dy)
-      const newScale = Math.min(3, Math.max(0.5, initScale * dist / initDist))
-      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2
-      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2
-      panX = initX + (midX - (initX || midX)); panY = initY + (midY - (initY || midY))
-      wrap.style.transform = `scale(${newScale})`
-      wrap.style.transformOrigin = '0 0'
-    }
-  }, { passive: false })
-
-  wrap.addEventListener('touchend', () => {
-    initDist = 0
-  })
-})()
-
-// Double tap to reset zoom
+// Zoom: use browser native pinch zoom (enabled in viewport meta)
+// Reset zoom with double-tap
 document.getElementById('wrap-mine')?.addEventListener('dblclick', () => {
-  const wrap = document.getElementById('wrap-mine')
-  if (wrap) wrap.style.transform = ''
+  document.body.style.zoom = ''
 })
