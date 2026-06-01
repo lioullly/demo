@@ -162,10 +162,9 @@ function setupCanvas() {
   window.addEventListener('resize', resize)
 
   const bp = $('btn-pen'), be = $('btn-eraser'), cp = $('color-picker'), ss = $('size-slider')
-  if (bp) bp.onclick = () => { tool='pen'; bp.className='on'; if(be)be.className='';cv.mine.fg.className='cross' }
   const em = $('eraser-mode')
-  if (be) be.onclick = () => { tool='eraser'; be.className='on'; if(bp)bp.className='';cv.mine.fg.className='';if(em)em.style.display='inline' }
   if (bp) bp.onclick = () => { tool='pen'; bp.className='on'; if(be)be.className='';cv.mine.fg.className='cross';if(em)em.style.display='none' }
+  if (be) be.onclick = () => { tool='eraser'; be.className='on'; if(bp)bp.className='';cv.mine.fg.className='';if(em)em.style.display='inline' }
   if (cp) cp.oninput = (e) => { color = e.target.value }
   if (ss) ss.oninput = (e) => { size = +e.target.value }
 
@@ -574,36 +573,74 @@ function sendBlockUpdate(id, text, checked) {
   sendWS({ type:'block_update', blockId:id, payload:{ text, checked }, pageId:getPageId(), userId:USER_ID, id:uid(), ts:Date.now(), source:USER_ID })
 }
 
+function addDragHandles(div, id, type, readOnly) {
+  if (readOnly) return
+  // Top drag bar: long dashed line with white center for grab
+  const bar = document.createElement('div')
+  bar.style.cssText = 'height:10px;cursor:grab;position:relative;margin:-2px 0 2px 0;touch-action:none'
+  bar.innerHTML = '<div style="border-top:1px dashed #93c5fd;position:absolute;top:4px;left:4px;right:4px"></div><div style="background:#eff6ff;width:40px;height:6px;border-radius:3px;position:absolute;top:2px;left:50%;transform:translateX(-50%);border:1px solid #93c5fd"></div>'
+  let startX, startY, origLeft, origTop
+  bar.onpointerdown = (e) => {
+    e.stopPropagation(); e.preventDefault(); bar.setPointerCapture(e.pointerId)
+    startX = e.clientX; startY = e.clientY
+    origLeft = parseFloat(div.style.left) || 0; origTop = parseFloat(div.style.top) || 0
+    div.style.position = 'relative'
+    const move = (ev) => { div.style.left = (origLeft + ev.clientX - startX) + 'px'; div.style.top = (origTop + ev.clientY - startY) + 'px' }
+    const up = () => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); bar.releasePointerCapture(e.pointerId) }
+    document.addEventListener('pointermove', move)
+    document.addEventListener('pointerup', up)
+  }
+  div.appendChild(bar)
+
+  // Corner resize handle (bottom-right)
+  const resizer = document.createElement('div')
+  resizer.style.cssText = 'position:absolute;bottom:0;right:0;width:14px;height:14px;cursor:nwse-resize;background:linear-gradient(135deg,transparent 50%,#c0c0c0 50%,#c0c0c0 55%,transparent 55%,transparent 75%,#c0c0c0 75%)'
+  let rsX, rsY, rsW, rsH
+  resizer.onpointerdown = (e) => {
+    e.stopPropagation(); e.preventDefault(); resizer.setPointerCapture(e.pointerId)
+    rsX = e.clientX; rsY = e.clientY
+    rsW = div.offsetWidth; rsH = div.offsetHeight
+    const move = (ev) => {
+      const nw = Math.max(120, rsW + ev.clientX - rsX)
+      const nh = Math.max(40, rsH + ev.clientY - rsY)
+      div.style.width = nw + 'px'
+      div.style.minHeight = nh + 'px'
+      // Scale font with width: bigger box = bigger text
+      const scale = Math.min(2, Math.max(0.6, nw / 300))
+      const inputs = div.querySelectorAll('input,textarea')
+      inputs.forEach((inp) => {
+        const base = type === 'h' ? (28 - (parseInt(type[1]) || 1) * 4) : 14
+        inp.style.fontSize = Math.round(base * scale) + 'px'
+      })
+    }
+    const up = () => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up) }
+    document.addEventListener('pointermove', move)
+    document.addEventListener('pointerup', up)
+  }
+  div.appendChild(resizer)
+
+  // Delete button (top-right)
+  const del = document.createElement('button'); del.textContent = 'x'
+  del.style.cssText = 'position:absolute;top:-4px;right:-4px;background:#fff;color:#999;border:1px solid #93c5fd;border-radius:50%;width:20px;height:20px;font-size:11px;cursor:pointer;z-index:2;line-height:1'
+  del.onclick = (e) => { e.stopPropagation(); div.remove(); sendWS({ type:'block_delete', blockId:id, pageId:getPageId(), userId:USER_ID, id:uid(), ts:Date.now(), source:USER_ID }) }
+  div.appendChild(del)
+}
+
 function makeBlock(id, type, payload, readOnly) {
   const div = document.createElement('div')
   div.className = 'block-item'; div.dataset.blockId = id; div.dataset.blockType = type
-  div.style.cssText = 'padding:6px 10px;margin:3px 0;background:#fff;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,0.06);display:flex;align-items:flex-start;gap:6px;position:relative;pointer-events:auto;touch-action:manipulation'
+  div.style.cssText = 'padding:8px 12px;margin:8px 4px;background:#fff;border-radius:4px;border:1.5px dashed #93c5fd;position:relative;pointer-events:auto;touch-action:manipulation;min-width:120px;min-height:40px;overflow:visible'
 
-  // Drag handle for repositioning
-  if (!readOnly) {
-    const grip = document.createElement('span')
-    grip.textContent = '≡'; grip.style.cssText = 'cursor:grab;color:#ccc;font-size:16px;line-height:1;user-select:none;padding:2px 0;touch-action:none'
-    grip.onpointerdown = (e) => {
-      e.stopPropagation(); e.preventDefault()
-      const startY = e.clientY; const startTop = div.offsetTop
-      const move = (ev) => { div.style.position = 'relative'; div.style.top = (startTop + ev.clientY - startY) + 'px' }
-      const up = () => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up) }
-      document.addEventListener('pointermove', move)
-      document.addEventListener('pointerup', up)
-    }
-    div.appendChild(grip)
-  }
+  addDragHandles(div, id, type, readOnly)
+
+  const inner = document.createElement('div')
+  inner.style.cssText = 'display:flex;align-items:flex-start;gap:6px'
 
   if (type === 'img') {
     const img = document.createElement('img')
-    img.src = payload.src; img.style.maxWidth = '100%'; img.style.maxHeight = '300px'; img.style.borderRadius = '6px'
-    div.appendChild(img)
-    if (!readOnly) {
-      const del = document.createElement('button'); del.textContent = 'x'
-      del.style.cssText = 'position:absolute;top:2px;right:2px;background:#ef4444;color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:11px;cursor:pointer;z-index:1'
-      del.onclick = (e) => { e.stopPropagation(); div.remove(); sendWS({ type:'block_delete', blockId:id, pageId:getPageId(), userId:USER_ID, id:uid(), ts:Date.now(), source:USER_ID }) }
-      div.appendChild(del)
-    }
+    img.src = payload.src; img.style.maxWidth = '100%'; img.style.maxHeight = '300px'; img.style.borderRadius = '4px'
+    inner.appendChild(img)
+    div.appendChild(inner)
     return div
   }
 
@@ -611,36 +648,39 @@ function makeBlock(id, type, payload, readOnly) {
     const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = payload.checked || false
     cb.style.cssText = 'width:18px;height:18px;flex-shrink:0;margin-top:2px'
     if (!readOnly) cb.onchange = () => sendBlockUpdate(id, null, cb.checked)
-    div.appendChild(cb)
+    inner.appendChild(cb)
   }
 
+  const fontSizeMap = { h1: 28, h2: 24, h3: 20, h4: 18, p: 14, todo: 14 }
+  const fs = fontSizeMap[type] || 14
+
   let input
-  const baseStyle = 'flex:1;border:none;outline:none;background:transparent;font-family:inherit;padding:2px 0;pointer-events:auto;min-height:24px'
   if (type === 'p') {
     input = document.createElement('textarea')
     input.setAttribute('inputmode', 'text'); input.rows = 1
-    input.style.cssText = baseStyle + ';font-size:14px;resize:none;overflow:hidden'
+    input.style.cssText = 'flex:1;border:none;outline:none;background:transparent;font-family:inherit;padding:2px 0;pointer-events:auto;font-size:' + fs + 'px;resize:none;overflow:hidden;min-height:24px'
     input.placeholder = 'Type here...'; input.value = payload.text || ''
     input.oninput = () => { input.style.height = 'auto'; input.style.height = Math.max(24, input.scrollHeight) + 'px' }
-    setTimeout(() => { input.style.height = 'auto'; input.style.height = Math.max(24, input.scrollHeight) + 'px' }, 0)
+    setTimeout(() => { input.style.height = 'auto'; input.style.height = Math.max(24, input.scrollHeight) + 'px' }, 10)
   } else {
     input = document.createElement('input')
     input.type = 'text'; input.setAttribute('inputmode', 'text')
-    input.style.cssText = baseStyle + ';font-size:' + (type.startsWith('h') ? (28 - (parseInt(type[1]) || 1) * 4) : 14) + 'px'
+    input.style.cssText = 'flex:1;border:none;outline:none;background:transparent;font-family:inherit;padding:2px 0;pointer-events:auto;font-size:' + fs + 'px'
     if (type.startsWith('h')) { input.style.fontWeight = 'bold'; input.placeholder = 'Heading ' + (parseInt(type[1]) || 1) }
     else { input.placeholder = 'Type...' }
     input.value = payload.text || ''
   }
   if (input) {
     input.readOnly = !!readOnly
-    input.style.pointerEvents = 'auto'
     if (!readOnly) {
       let debounce
-      input.oninput = () => { clearTimeout(debounce); debounce = setTimeout(() => { sendBlockUpdate(id, input.value, type==='todo' ? div.querySelector('input[type=checkbox]')?.checked : undefined) }, 300) }
-      input.onblur = () => { clearTimeout(debounce); sendBlockUpdate(id, input.value, type==='todo' ? div.querySelector('input[type=checkbox]')?.checked : undefined) }
+      const sendUpdate = () => { clearTimeout(debounce); debounce = setTimeout(() => sendBlockUpdate(id, input.value, type==='todo' ? inner.querySelector('input[type=checkbox]')?.checked : undefined), 300) }
+      input.oninput = () => { input.style.height = 'auto'; input.style.height = Math.max(24, input.scrollHeight) + 'px'; sendUpdate() }
+      input.onblur = () => { clearTimeout(debounce); sendBlockUpdate(id, input.value, type==='todo' ? inner.querySelector('input[type=checkbox]')?.checked : undefined) }
     }
-    div.appendChild(input)
+    inner.appendChild(input)
   }
+  div.appendChild(inner)
   return div
 }
 
