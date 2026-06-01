@@ -1,5 +1,5 @@
 // Main entry point — imports and wires all modules
-import { $, uid, genRoom, setNick, getUserName, room, setRoom, connectedHost, cv, strokes, pages, currentPage, getStrokes, getPageId, getPageSize, PAGE_SIZES, USER_ID, userName } from './utils.js'
+import { $, uid, genRoom, setNick, getUserName, room, setRoom, connectedHost, cv, strokes, pages, currentPage, getStrokes, getPageId, getPageSize, PAGE_SIZES, USER_ID, userName, escHtml } from './utils.js'
 import { connectWS, sendWS, handleWS } from './sync.js'
 import { addBlock, makeBlock, handleBlockMsg } from './blocks.js'
 
@@ -12,8 +12,8 @@ const joinInput = $('join-room-input')
 const hostInput = $('host-addr')
 const lobbyMsg = $('lobby-msg')
 
-createInput.value = genRoom()
-$('btn-random').onclick = () => { createInput.value = genRoom() }
+if (createInput) createInput.value = genRoom()
+if ($('btn-random')) $('btn-random').onclick = () => { if (createInput) createInput.value = genRoom() }
 
 $('tab-create').onclick = () => {
   isCreate = true
@@ -25,9 +25,9 @@ $('tab-join').onclick = () => {
   $('tab-join').className = 'on'; $('tab-create').className = ''
   $('create-row').style.display = 'none'; joinInput.style.display = 'block'; joinInput.focus()
 }
-joinInput.oninput = () => {
-  setRoom(joinInput.value.trim().toUpperCase())
-  $('btn-enter').disabled = room.length < 4
+if (joinInput) joinInput.oninput = () => {
+  const v = joinInput.value.trim().toUpperCase(); setRoom(v)
+  const be = $('btn-enter'); if (be) be.disabled = v.length < 4
 }
 
 function getRoom() { return isCreate ? createInput.value.trim().toUpperCase() || genRoom() : joinInput.value.trim().toUpperCase() }
@@ -151,7 +151,7 @@ function setupCanvas() {
   const br=$('btn-reconnect');if(br)br.onclick=async()=>{br.textContent='...';br.disabled=true
     const h=connectedHost||hostInput.value?.trim()||location.hostname
     const ok=await connectWS(h,room);br.textContent='Reconnect';br.disabled=false
-    if(!ok&&statusDot){statusDot.textContent='Failed';statusDot.className='status-wait'}}
+    if(!ok&&statusDot){statusDot.textContent='Failed';statusDot.className='status-wait'}else if(ok&&statusDot){statusDot.textContent='Connected';statusDot.className='status-ok'}}
 
   setupPointer('mine');cv.peer.fg.style.pointerEvents='none'
 
@@ -208,7 +208,7 @@ function exportNotes(){
     const store=k==='mine'?getStrokes():strokes.peer
     store.forEach((s)=>{ctx.save();ctx.lineCap=ctx.lineJoin='round';const sc=sz/(cv[k].bg.width/dpr);ctx.strokeStyle=s.color;ctx.lineWidth=s.size*sc/dpr;ctx.globalAlpha=0.95;ctx.beginPath();if(s.points.length>0){ctx.moveTo(s.points[0].x*sc/dpr,s.points[0].y*sc/dpr);for(let i=1;i<s.points.length;i++)ctx.lineTo(s.points[i].x*sc/dpr,s.points[i].y*sc/dpr)}ctx.stroke();ctx.restore()})
     if(fmt){can.toBlob((blob)=>{const a=document.createElement('a');a.download=`${names[idx]}_${ts}.png`;a.href=URL.createObjectURL(blob);a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)})}
-    else{const es=sz/(cv[k].bg.width/dpr);const ss=sz*1.4;let svg='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+ss+' '+ss+'"><rect width="'+ss+'" height="'+ss+'" fill="#faf8f0"/>'
+    else{const es=sz/((cv[k].bg.width||1)/dpr);const ss=sz*1.4;let svg='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+ss+' '+ss+'"><rect width="'+ss+'" height="'+ss+'" fill="#faf8f0"/>'
       store.forEach((s)=>{const pts=s.points.map((p)=>`${p.x*es/dpr},${p.y*es/dpr}`).join(' ');svg+='<path d="M'+pts+'" stroke="'+escHtml(s.color)+'" stroke-width="'+(s.size*es/dpr)+'" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>'})
       svg+='</svg>';const blob=new Blob([svg],{type:'image/svg+xml'});const a=document.createElement('a');a.download=`${names[idx]}_${ts}.svg`;a.href=URL.createObjectURL(blob);a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
   });btn.textContent='Export';btn.disabled=false}

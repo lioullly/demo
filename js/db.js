@@ -1,10 +1,12 @@
 // IndexedDB singleton
-let _idb = null, _promise = null
+let _idb = null
+let _promise = null
 
 function getDB() {
   if (_idb) return Promise.resolve(_idb)
   if (!_promise) {
     _promise = new Promise((ok, no) => {
+      if (typeof indexedDB === 'undefined') { no(new Error('IndexedDB not available')); return }
       const r = indexedDB.open('handwriting_sync', 3)
       r.onupgradeneeded = () => {
         const d = r.result
@@ -12,7 +14,8 @@ function getDB() {
         if (!d.objectStoreNames.contains('texts')) d.createObjectStore('texts', { keyPath: 'id' })
       }
       r.onsuccess = () => { _idb = r.result; ok(_idb) }
-      r.onerror = () => no(r.error)
+      r.onerror = () => { _promise = null; no(r.error) }
+      r.onblocked = () => { _promise = null; no(new Error('Blocked')) }
     })
   }
   return _promise
@@ -27,17 +30,30 @@ export function draw(ctx, pts, c, s) {
 }
 
 export async function saveStroke(id, pts, c, s) {
-  try { const d = await getDB(); d.transaction('strokes', 'readwrite').objectStore('strokes').put({ id, pageId: 'page_1', userId: 'local', points: pts, color: c, size: s, ts: Date.now() }) } catch (_) {}
+  try {
+    const d = await getDB()
+    const tx = d.transaction('strokes', 'readwrite')
+    const req = tx.objectStore('strokes').put({ id, pageId: 'page_1', userId: 'local', points: pts, color: c, size: s, ts: Date.now() })
+    return new Promise((ok, no) => { req.onsuccess = () => ok(); req.onerror = () => no(req.error); tx.onerror = () => no(tx.error) })
+  } catch (_) {}
 }
 
 export async function deleteStroke(id) {
-  try { const d = await getDB(); d.transaction('strokes', 'readwrite').objectStore('strokes').delete(id) } catch (_) {}
+  try {
+    const d = await getDB()
+    const tx = d.transaction('strokes', 'readwrite')
+    const req = tx.objectStore('strokes').delete(id)
+    return new Promise((ok, no) => { req.onsuccess = () => ok(); req.onerror = () => no(req.error); tx.onerror = () => no(tx.error) })
+  } catch (_) {}
 }
 
 export async function loadStrokes(callback) {
+  if (typeof callback !== 'function') return
   try {
     const d = await getDB()
-    const req = d.transaction('strokes', 'readonly').objectStore('strokes').getAll()
-    req.onsuccess = () => req.result.sort((a, b) => a.ts - b.ts).forEach((s) => callback(s))
+    const tx = d.transaction('strokes', 'readonly')
+    const req = tx.objectStore('strokes').getAll()
+    req.onsuccess = () => { try { req.result.sort((a, b) => a.ts - b.ts).forEach((s) => callback(s)) } catch (_) {} }
+    req.onerror = () => {}
   } catch (_) {}
 }
