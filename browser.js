@@ -4,7 +4,8 @@
 
 const WS_PORT = 3000
 const PAGE_ID = 'page_default'
-const USER_ID = `u_${Date.now().toString(36)}`
+let USER_ID = `u_${Date.now().toString(36)}`
+let userName = ''
 
 function $(id) { return document.getElementById(id) }
 function uid() { return `${Date.now()}_${Math.random().toString(36).slice(2,8)}` }
@@ -78,21 +79,32 @@ async function doScan() {
     const parts = host.split('.')
     if (parts.length === 4) { const s = parts.slice(0,3).join('.'); if (!subs.includes(s)) subs.unshift(s) }
   }
+  let found = null
   for (const sub of subs) {
     const batch = []
     for (let i = 1; i <= 20; i++) {
       const ip = `${sub}.${i}`
       batch.push(fetch(`http://${ip}:${WS_PORT}/api/status`,{signal:AbortSignal.timeout(600)}).then(r=>r.json()).then(d=>{
-        if (d.name==='handwriting-sync') { hostInput.value = d.ip; btnScan.textContent='找到'; lobbyMsg.textContent=`发现: ${d.ip}`; throw 'found' }
+        if (d.name==='handwriting-sync' && !found) { found = { ip, rooms: d.rooms || [] } }
       }).catch(()=>{}))
     }
     await Promise.all(batch)
-    if (btnScan.textContent === '找到') break
+    if (found) break
   }
   btnScan.textContent = '扫描'; btnScan.disabled = false
-}
-
-btnScan.onclick = doScan
+  if (found) {
+    hostInput.value = found.ip
+    if (found.rooms.length > 0) {
+      const list = found.rooms.map(r => `${r.room} (${r.clients}人)`).join(', ')
+      lobbyMsg.textContent = `主机 ${found.ip} | 房间: ${list}`
+      // 自动填入第一个房间
+      if (isCreate) createInput.value = found.rooms[0].room
+      else joinInput.value = found.rooms[0].room
+    } else {
+      lobbyMsg.textContent = `主机 ${found.ip} | 暂无房间`
+    }
+  } else {
+    lobbyMsg.textContent = '未发现主机'
 btnConnectLobby.onclick = async () => {
   const host = hostInput.value.trim()
   if (!host) { lobbyMsg.textContent = '请输入主机地址'; return }
@@ -106,6 +118,9 @@ btnConnectLobby.onclick = async () => {
 btnEnter.onclick = async () => {
   room = getRoom()
   if (room.length < 4) { lobbyMsg.textContent = '房间码至少 4 位'; return }
+  userName = $('nickname-input').value.trim() || ('用户' + Math.random().toString(36).slice(2,5))
+  USER_ID = `u_${userName}_${Date.now().toString(36)}`
+  $('user-badge').textContent = userName
   const host = hostInput.value.trim() || location.hostname
   if (host && host !== 'localhost' && host !== '127.0.0.1') {
     const ok = await connectWS(host)
@@ -155,11 +170,35 @@ function setupCanvas() {
   resize()
   window.addEventListener('resize', resize)
 
-  $('btn-pen').onclick = () => { tool='pen'; $('btn-pen').className='on'; $('btn-eraser').className=$('btn-text').className=''; cv.mine.fg.className='cross' }
-  $('btn-eraser').onclick = () => { tool='eraser'; $('btn-eraser').className='on'; $('btn-pen').className=$('btn-text').className=''; cv.mine.fg.className='' }
-  $('btn-text').onclick = () => { $('text-overlay').classList.toggle('show'); $('text-input').focus() }
+  $('btn-pen').onclick = () => { tool='pen'; $('btn-pen').className='on'; $('btn-eraser').className='';cv.mine.fg.className='cross' }
+  $('btn-eraser').onclick = () => { tool='eraser'; $('btn-eraser').className='on'; $('btn-pen').className='';cv.mine.fg.className='' }
   $('color-picker').oninput = (e) => { color = e.target.value }
   $('size-slider').oninput = (e) => { size = +e.target.value }
+
+  // 添加块菜单
+  const menu = document.querySelector('.add-block-menu')
+  $('btn-add-block').onclick = () => { menu.style.display = menu.style.display === 'none' ? 'block' : 'none' }
+  menu.querySelectorAll('div').forEach((el) => {
+    el.onclick = () => {
+      menu.style.display = 'none'
+      const type = el.dataset.type
+      if (type === 'img') {
+        const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*'
+        inp.onchange = () => {
+          if (!inp.files[0]) return
+          const reader = new FileReader()
+          reader.onload = () => {
+            const img = new Image(); img.src = reader.result
+            img.onload = () => addBlock(type, { src: reader.result, alt: inp.files[0].name, width: img.width, height: img.height })
+          }
+          reader.readAsDataURL(inp.files[0])
+        }
+        inp.click()
+      } else {
+        addBlock(type, type.startsWith('h') ? { level: parseInt(type[1]), text: '' } : type === 'todo' ? { text: '', checked: false } : { text: '' })
+      }
+    }
+  })
   $('btn-view-both').onclick = () => { $('panel-peer').style.display='';resize();$('btn-view-both').className='on';$('btn-view-mine').className='' }
   $('btn-view-mine').onclick = () => { $('panel-peer').style.display='none';resize();$('btn-view-mine').className='on';$('btn-view-both').className='' }
   $('btn-export').onclick = exportNotes
@@ -274,7 +313,7 @@ function setupPointer(board) {
     if (!isDrawing || board === 'peer') return; isDrawing = false
     if (tool === 'pen' && points.length > 0) {
       const id = uid()
-      const msg = { id, type:'stroke', payload:{ points: [...points], color, size }, pageId:PAGE_ID, userId:USER_ID, ts:Date.now(), source:USER_ID }
+      const msg = { id, type:'stroke', payload:{ points: [...points], color, size }, pageId:PAGE_ID, userId:USER_ID, userName, ts:Date.now(), source:USER_ID }
       draw(ctxBg, points, color, size); strokes.mine.set(id, { points: [...points], color, size }); sendWS(msg); saveStroke(id, [...points], color, size)
       ctxFg.clearRect(0, 0, fg.width, fg.height)
     }
@@ -298,7 +337,7 @@ function eraseLocal(board, p) {
   store.forEach((s, id) => { if (s.points.some((q) => (q.x-p.x)**2 + (q.y-p.y)**2 < 144)) hit.push(id) })
   if (hit.length) {
     hit.forEach((id) => { store.delete(id); if (board==='mine') deleteStroke(id) })
-    sendWS({ type:'erase', payload:{ strokeIds:hit }, pageId:PAGE_ID, userId:USER_ID, id:uid(), ts:Date.now(), source:USER_ID })
+    sendWS({ type:'erase', payload:{ strokeIds:hit }, pageId:PAGE_ID, userId:USER_ID, userName, id:uid(), ts:Date.now(), source:USER_ID })
     redrawBoard(board)
   }
 }
