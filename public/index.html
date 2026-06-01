@@ -95,6 +95,10 @@ canvas.cross{cursor:crosshair}
       <!-- 加入房间 -->
       <input id="join-room-input" style="display:none;width:100%;padding:12px;border:1px solid var(--border);border-radius:8px;font-size:18px;font-family:monospace;text-align:center;text-transform:uppercase;letter-spacing:.15em;margin-bottom:12px" maxlength="6" placeholder="输入房间码" spellcheck="false" />
 
+      <!-- 用户名称 -->
+      <p style="font-size:11px;color:var(--sub);margin-bottom:4px;text-align:left">你的名字</p>
+      <input id="nickname-input" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px;margin-bottom:8px" maxlength="12" placeholder="输入你的名字" />
+
       <!-- 主机地址 -->
       <p style="font-size:11px;color:var(--sub);margin-bottom:4px;text-align:left">主机地址</p>
       <div class="host-row">
@@ -112,6 +116,7 @@ canvas.cross{cursor:crosshair}
   <div id="canvas-view">
     <div id="topbar">
       <span id="room-badge" title="点击复制链接">Room: —</span>
+      <span id="user-badge" style="font-size:11px;color:var(--sub);background:var(--bg);padding:4px 8px;border-radius:4px">我</span>
       <button id="btn-share" style="font-size:11px;padding:4px 10px;border:1px solid var(--border);border-radius:4px;background:#fff;cursor:pointer">分享</button>
       <button id="btn-reconnect" style="font-size:11px;padding:4px 10px;border:1px solid var(--border);border-radius:4px;background:#fff;cursor:pointer;display:none">重连</button>
       <span id="status-dot" class="status-wait">未连接</span>
@@ -119,7 +124,17 @@ canvas.cross{cursor:crosshair}
     <div id="toolbar">
       <button id="btn-pen" class="on">pen</button>
       <button id="btn-eraser">eraser</button>
-      <button id="btn-text">text</button>
+      <div style="position:relative;display:inline-block" class="add-block-group">
+        <button id="btn-add-block">+ block</button>
+        <div class="add-block-menu" style="display:none;position:absolute;top:100%;left:0;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:4px;z-index:50;min-width:120px">
+          <div data-type="p" style="padding:4px 8px;cursor:pointer;font-size:12px">paragraph</div>
+          <div data-type="h1" style="padding:4px 8px;cursor:pointer;font-size:12px">heading 1</div>
+          <div data-type="h2" style="padding:4px 8px;cursor:pointer;font-size:12px">heading 2</div>
+          <div data-type="h3" style="padding:4px 8px;cursor:pointer;font-size:12px">heading 3</div>
+          <div data-type="todo" style="padding:4px 8px;cursor:pointer;font-size:12px">todo</div>
+          <div data-type="img" style="padding:4px 8px;cursor:pointer;font-size:12px">image</div>
+        </div>
+      </div>
       <input type="color" id="color-picker" value="#1a1a1a" />
       <input type="range" id="size-slider" min="1" max="20" value="3" />
       <span style="flex:1"></span>
