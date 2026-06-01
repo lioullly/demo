@@ -115,28 +115,26 @@ btnEnter.onclick = async () => {
 }
 
 function done(host) {
-  const shareHost = connectedHost || host || location.hostname
   lobby.style.display = 'none'
   canvasView.classList.add('show')
   roomBadge.textContent = `Room: ${room}`
-  const shareURL = `${location.origin}${location.pathname}?room=${encodeURIComponent(room)}&host=${encodeURIComponent(shareHost)}`
 
   const doShare = () => {
-    navigator.clipboard?.writeText(shareURL).catch(()=>{
-      const ta = document.createElement('textarea')
-      ta.value = shareURL; ta.style.position = 'fixed'; ta.style.left = '-9999px'
-      document.body.appendChild(ta); ta.select()
-      document.execCommand('copy'); document.body.removeChild(ta)
-    })
-    const btn = $('btn-share')
-    if (btn) { btn.textContent = '已复制'; btn.style.background = '#22c55e'; btn.style.color = '#fff' }
+    const host = connectedHost || host || location.hostname
+    const text = `${host}:${WS_PORT}\n房间号: ${room}`
+    const ta = document.createElement('textarea')
+    ta.value = text; ta.style.position = 'fixed'; ta.style.left = '-9999px'
+    document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, 99999)
+    document.execCommand('copy'); document.body.removeChild(ta)
+    const btn = document.getElementById('btn-share')
+    if (btn) { btn.innerText = '已复制'; btn.style.background = '#22c55e'; btn.style.color = '#fff' }
     setTimeout(() => {
-      if (btn) { btn.textContent = '分享'; btn.style.background = '#fff'; btn.style.color = '' }
-    }, 1500)
+      if (btn) { btn.innerText = '分享'; btn.style.background = ''; btn.style.color = '' }
+    }, 2000)
   }
   roomBadge.onclick = doShare
-  const shareBtn = $('btn-share')
-  if (shareBtn) shareBtn.onclick = doShare
+  const sb = document.getElementById('btn-share')
+  if (sb) sb.onclick = doShare
   setupCanvas()
 }
 
