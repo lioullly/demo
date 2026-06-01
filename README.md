@@ -1,6 +1,6 @@
-# Dual Note Sync
+# Handwriting Sync — iPad H5 手写笔记实时同步
 
-双人手写笔记同步实验 — Electron + UDP 广播 + WebSocket
+两台 iPad 局域网实时同步手写笔记。纯 H5，无需安装 App。
 
 ## 快速开始
 
@@ -9,55 +9,27 @@ npm install
 npm start
 ```
 
-在两台电脑上同时启动，同一 WiFi 下自动发现并连接。
+主机启动后：
+- 主机 IP 显示在终端
+- 平板浏览器打开 `http://主机IP:3000`
+- 点 **扫描** 自动发现主机，或手动输入 IP
 
 ## 架构
 
 ```
-src/
-├── electron/
-│   ├── main.js        # Electron 主进程（UDP + WS 服务）
-│   └── preload.js     # 安全 IPC 桥接
-├── sync/
-│   ├── lan.js         # UDP 广播发现（port 41234）
-│   ├── transport.js   # WebSocket 传输（port 3000）
-│   └── protocol.js    # JSON 消息协议
-├── db/
-│   └── sqlite.js      # SQLite 本地存储
-├── renderer/
-│   └── index.js       # UI ↔ Sync 胶水层
-└── ui/
-    ├── index.html      # 主界面
-    └── app.js          # Canvas 手写 + 同步逻辑
+iPad A (主机)                iPad B (客户端)
+┌──────────────┐            ┌──────────────┐
+│ node server  │◄── WS ───▶│  H5 浏览器    │
+│ UDP 广播响应 │            │  IndexedDB   │
+│ 静态文件服务  │            │  Canvas 手写 │
+└──────────────┘            └──────────────┘
 ```
 
-## 同步协议
+## 技术栈
 
-```json
-{
-  "id": "uuid",
-  "pageId": "page_a",
-  "userId": "user_a",
-  "type": "stroke | text | image | erase",
-  "payload": {},
-  "ts": 1700000000,
-  "source": "A"
-}
-```
-
-- 每台设备只写自己的页面（pageId + userId 隔离）
-- source 字段防回环
-- 只同步增量操作
-
-## 端口
-
-| 端口 | 用途 |
-|------|------|
-| 41234 | UDP 广播发现 |
-| 3000  | WebSocket 同步数据 |
-
-## 公网扩展
-
-- STUN（公网 IP 发现）
-- TURN（coturn 中继，校园网兜底）
-- Transport 抽象层，上层不变
+| 层 | 技术 |
+|---|---|
+| 主机 | Node.js + ws |
+| 客户端 | HTML5 Canvas + WebSocket + IndexedDB |
+| 网络发现 | UDP 广播 + HTTP 扫描 |
+| 同步格式 | JSON 增量操作 (stroke/erase) |

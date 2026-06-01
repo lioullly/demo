@@ -64,6 +64,12 @@ const http = createServer((req, res) => {
     wss.handleUpgrade(req, req.socket, Buffer.alloc(0), (ws) => wss.emit('connection', ws, req))
     return
   }
+  // API: 主机状态（客户端扫描用）
+  if (req.url === '/api/status') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
+    res.end(JSON.stringify({ name: 'handwriting-sync', version: '1.0.0', ip: getLanIP(), port: WS_PORT, clients: clients.size }))
+    return
+  }
   // 静态文件
   let filePath = req.url === '/' ? '/index.html' : req.url
   const fullPath = join(__dirname, 'public', filePath)

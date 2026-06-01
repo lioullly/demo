@@ -1,15 +1,15 @@
 {
-  "name": "dual-note-sync",
-  "version": "0.2.0",
-  "description": "双人手写笔记同步 — Node.js 主机 + H5 平板客户端",
+  "name": "handwriting-sync",
+  "version": "1.0.0",
+  "description": "iPad H5 手写笔记实时同步 — WebSocket + IndexedDB",
   "private": true,
   "type": "module",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "node server.js"
   },
   "dependencies": {
-    "sql.js": "^1.11.0",
     "ws": "^8.16.0"
   }
 }
