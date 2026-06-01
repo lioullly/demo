@@ -138,6 +138,13 @@ canvas.cross{cursor:crosshair}
       <input type="color" id="color-picker" value="#1a1a1a" />
       <input type="range" id="size-slider" min="1" max="20" value="3" />
       <span style="flex:1"></span>
+      <button id="btn-prev-page" title="上一页">&lt;</button>
+      <span id="page-indicator" style="font-size:12px;color:var(--sub);min-width:60px;text-align:center">1/1</span>
+      <button id="btn-next-page" title="下一页">&gt;</button>
+      <button id="btn-add-page" title="新建页">+</button>
+      <select id="page-size-sel" style="font-size:11px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;margin-left:4px">
+        <option>A4</option><option>A5</option><option>Letter</option><option>Square</option><option>Auto</option>
+      </select>
       <button id="btn-view-both" class="on">双页</button>
       <button id="btn-view-mine">我的</button>
       <button id="btn-export" style="margin-left:8px">导出</button>

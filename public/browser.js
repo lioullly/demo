@@ -3,9 +3,15 @@
  */
 
 const WS_PORT = 3000
-const PAGE_ID = 'page_default'
 let USER_ID = `u_${Date.now().toString(36)}`
 let userName = ''
+// Multi-page system
+const PAGE_SIZES = { A4: { w: 595, h: 842 }, A5: { w: 420, h: 595 }, Letter: { w: 612, h: 792 }, Square: { w: 600, h: 600 }, Auto: null }
+let pages = [{ id: 'page_1', name: 'Page 1', size: 'A4', strokes: new Map() }]
+let currentPage = 0
+function getPageId() { return pages[currentPage]?.id || 'page_1' }
+function getStrokes() { return pages[currentPage]?.strokes || pages[0].strokes }
+function getPageSize() { const s = pages[currentPage]?.size || 'A4'; return PAGE_SIZES[s] || PAGE_SIZES.Auto }
 
 function $(id) { return document.getElementById(id) }
 function uid() { return `${Date.now()}_${Math.random().toString(36).slice(2,8)}` }
@@ -49,29 +55,6 @@ joinInput.oninput = () => {
 }
 
 function getRoom() { return isCreate ? createInput.value.trim().toUpperCase() || genRoom() : joinInput.value.trim().toUpperCase() }
-
-function connectWS(host) {
-  return new Promise((resolve, reject) => {
-    if (ws) { ws.close(); ws = null }
-    if (!room) { reject('no room'); return }
-    const url = `ws://${host}:${WS_PORT}?room=${encodeURIComponent(room)}`
-    lobbyMsg.textContent = '连接中...'
-    ws = new WebSocket(url)
-    ws.onopen = () => {
-      lobbyMsg.textContent = '已连接'; connectedHost = host; resolve(true)
-      if (statusDot) { statusDot.textContent = '已连接'; statusDot.className = 'status-ok'; $('btn-reconnect').style.display = 'none' }
-    }
-    ws.onerror = () => {
-      lobbyMsg.textContent = '连接失败'; ws = null; resolve(false)
-      if (statusDot) { statusDot.textContent = '已断开'; statusDot.className = 'status-wait'; $('btn-reconnect').style.display = '' }
-    }
-    ws.onclose = () => {
-      if (ws) { lobbyMsg.textContent = '已断开'; ws = null }
-      if (statusDot) { statusDot.textContent = '已断开'; statusDot.className = 'status-wait'; $('btn-reconnect').style.display = '' }
-    }
-    setTimeout(() => { if (ws?.readyState !== WebSocket.OPEN) { ws = null; resolve(false) } }, 3000)
-  })
-}
 
 async function doScan() {
   btnScan.textContent = '...'; btnScan.disabled = true; lobbyMsg.textContent = '扫描中...'
@@ -216,6 +199,40 @@ function setupCanvas() {
   if ($('text-send')) $('text-send').onclick = sendText
   if ($('text-cancel')) $('text-cancel').onclick = () => { const ti=$('text-input'); if(ti)ti.value=''; const to=$('text-overlay'); if(to)to.classList.remove('show') }
 
+  // Page management
+  const updatePageIndicator = () => {
+    const ind = $('page-indicator'); if (ind) ind.textContent = `${currentPage+1}/${pages.length}`
+    const ps = $('page-size-sel'); if (ps) ps.value = pages[currentPage]?.size || 'A4'
+  }
+  const goToPage = (idx) => {
+    if (idx < 0 || idx >= pages.length) return
+    currentPage = idx
+    updatePageIndicator()
+    // Clear and reload canvas for this page
+    const ctx = cv.mine.ctxBg
+    if (ctx) { ctx.save(); ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,cv.mine.bg.width,cv.mine.bg.height); ctx.restore() }
+    if (ctx) getStrokes().forEach((s) => draw(ctx, s.points, s.color, s.size))
+    resize()
+  }
+  const addPage = () => {
+    const idx = pages.length
+    pages.push({ id: `page_${idx+1}`, name: `Page ${idx+1}`, size: pages[currentPage]?.size || 'A4', strokes: new Map() })
+    currentPage = idx
+    updatePageIndicator()
+    const ctx = cv.mine.ctxBg
+    if (ctx) { ctx.save(); ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,cv.mine.bg.width,cv.mine.bg.height); ctx.restore() }
+    resize()
+  }
+  const bpPage = $('btn-prev-page'), bnPage = $('btn-next-page'), baPage = $('btn-add-page'), psSel = $('page-size-sel')
+  if (bpPage) bpPage.onclick = () => goToPage(currentPage - 1)
+  if (bnPage) bnPage.onclick = () => goToPage(currentPage + 1)
+  if (baPage) baPage.onclick = addPage
+  if (psSel) psSel.onchange = () => {
+    pages[currentPage].size = psSel.value
+    resize()
+  }
+  updatePageIndicator()
+
   // 重连按钮
   const btnReconnect = $('btn-reconnect')
   btnReconnect.onclick = async () => {
@@ -285,7 +302,14 @@ function resize() {
     const wrap = document.getElementById(`wrap-${k}`)
     if (!wrap) continue
     const dpr = devicePixelRatio || 1
-    const w = wrap.clientWidth, h = wrap.clientHeight
+    let w = wrap.clientWidth, h = wrap.clientHeight
+    // Apply page size aspect ratio if not Auto
+    const ps = getPageSize()
+    if (ps) {
+      const ratio = ps.w / ps.h
+      if (w / h > ratio) w = Math.min(w, h * ratio)
+      else h = Math.min(h, w / ratio)
+    }
     for (const layer of ['bg', 'fg']) {
       const c = cv[k][layer]
       c.width = w * dpr; c.height = h * dpr
@@ -327,8 +351,8 @@ function setupPointer(board) {
     if (!isDrawing || board === 'peer') return; isDrawing = false
     if (tool === 'pen' && points.length > 0) {
       const id = uid()
-      const msg = { id, type:'stroke', payload:{ points: [...points], color, size }, pageId:PAGE_ID, userId:USER_ID, userName, ts:Date.now(), source:USER_ID }
-      draw(ctxBg, points, color, size); strokes.mine.set(id, { points: [...points], color, size }); sendWS(msg); saveStroke(id, [...points], color, size)
+      const msg = { id, type:'stroke', payload:{ points: [...points], color, size }, pageId:getPageId(), userId:USER_ID, userName, ts:Date.now(), source:USER_ID }
+      draw(ctxBg, points, color, size); getStrokes().set(id, { points: [...points], color, size }); sendWS(msg); saveStroke(id, [...points], color, size)
       ctxFg.clearRect(0, 0, fg.width, fg.height)
     }
     points = []
@@ -345,13 +369,13 @@ function draw(ctx, pts, c, s) {
 }
 
 function eraseLocal(board, p) {
-  const store = board === 'mine' ? strokes.mine : strokes.peer
+  const store = board === 'mine' ? getStrokes() : strokes.peer
   const ctx = cv[board].ctxBg
   const hit = []
   store.forEach((s, id) => { if (s.points.some((q) => (q.x-p.x)**2 + (q.y-p.y)**2 < 144)) hit.push(id) })
   if (hit.length) {
     hit.forEach((id) => { store.delete(id); if (board==='mine') deleteStroke(id) })
-    sendWS({ type:'erase', payload:{ strokeIds:hit }, pageId:PAGE_ID, userId:USER_ID, userName, id:uid(), ts:Date.now(), source:USER_ID })
+    sendWS({ type:'erase', payload:{ strokeIds:hit }, pageId:getPageId(), userId:USER_ID, userName, id:uid(), ts:Date.now(), source:USER_ID })
     redrawBoard(board)
   }
 }
@@ -370,7 +394,7 @@ function redrawBoard(board) {
 function sendText() {
   const txt = $('text-input').value.trim()
   if (!txt) return
-  const msg = { id:uid(), type:'text', payload:{ content:txt, x:100, y:100 }, pageId:PAGE_ID, userId:USER_ID, ts:Date.now(), source:USER_ID }
+  const msg = { id:uid(), type:'text', payload:{ content:txt, x:100, y:100 }, pageId:getPageId(), userId:USER_ID, ts:Date.now(), source:USER_ID }
   sendWS(msg)
   const ctx = cv.mine.ctxBg; ctx.save(); ctx.font = '16px system-ui'; ctx.fillStyle = '#1a1a1a'; ctx.fillText(txt, 100, 100); ctx.restore()
   $('text-input').value = ''; $('text-overlay').classList.remove('show')
@@ -396,14 +420,14 @@ function idb() {
   }
   return _idbPromise
 }
-async function saveStroke(id, pts, c, s) { try { const d=await idb();d.transaction('strokes','readwrite').objectStore('strokes').put({id,pageId:PAGE_ID,userId:USER_ID,points:pts,color:c,size:s,ts:Date.now()}) } catch(_) {} }
+async function saveStroke(id, pts, c, s) { try { const d=await idb();d.transaction('strokes','readwrite').objectStore('strokes').put({id,pageId:getPageId(),userId:USER_ID,points:pts,color:c,size:s,ts:Date.now()}) } catch(_) {} }
 async function deleteStroke(id) { try { const d=await idb();d.transaction('strokes','readwrite').objectStore('strokes').delete(id) } catch(_) {} }
-async function saveTextBlock(id, content, x, y) { try { const d=await idb();d.transaction('texts','readwrite').objectStore('texts').put({id,pageId:PAGE_ID,userId:USER_ID,content,x,y,ts:Date.now()}) } catch(_) {} }
+async function saveTextBlock(id, content, x, y) { try { const d=await idb();d.transaction('texts','readwrite').objectStore('texts').put({id,pageId:getPageId(),userId:USER_ID,content,x,y,ts:Date.now()}) } catch(_) {} }
 
 // Load saved strokes on startup
 idb().then((d) => {
   const req = d.transaction('strokes','readonly').objectStore('strokes').getAll()
-  req.onsuccess = () => req.result.sort((a,b)=>a.ts-b.ts).forEach((s)=>{strokes.mine.set(s.id,s);if(cv.mine.ctxBg)draw(cv.mine.ctxBg,s.points,s.color,s.size)})
+  req.onsuccess = () => req.result.sort((a,b)=>a.ts-b.ts).forEach((s)=>{getStrokes().set(s.id,s);if(cv.mine.ctxBg)draw(cv.mine.ctxBg,s.points,s.color,s.size)})
 }).catch(()=>{})
 
 /* ── connectWS race fix ── */
@@ -528,7 +552,7 @@ function exportNotes() {
 /* ── 块操作 ── */
 function addBlock(type, payload) {
   const id = uid()
-  const msg = { id, type, payload, pageId: PAGE_ID, userId: USER_ID, userName, ts: Date.now(), source: USER_ID }
+  const msg = { id, type, payload, pageId: getPageId(), userId: USER_ID, userName, ts: Date.now(), source: USER_ID }
   sendWS(msg)
   // 本地渲染
   const wrap = document.getElementById('wrap-mine')
