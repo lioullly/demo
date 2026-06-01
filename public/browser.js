@@ -261,14 +261,12 @@ function setupCanvas() {
 
   // 重连按钮
   const btnReconnect = $('btn-reconnect')
-  btnReconnect.onclick = async () => {
+  if (btnReconnect) btnReconnect.onclick = async () => {
     btnReconnect.textContent = '...'; btnReconnect.disabled = true
-    const host = connectedHost || hostInput.value.trim() || location.hostname
+    const host = connectedHost || hostInput.value?.trim() || location.hostname
     const ok = await connectWS(host)
     btnReconnect.textContent = '重连'; btnReconnect.disabled = false
-    if (!ok) {
-      statusDot.textContent = '重连失败'; statusDot.className = 'status-wait'
-    }
+    if (!ok) { if(statusDot){statusDot.textContent='Reconnect failed';statusDot.className='status-wait'} }
   }
 
   setupPointer('mine')
@@ -565,7 +563,7 @@ function exportNotes() {
     ctx.fillRect(0, 0, canvas.width / dpr, canvas.height / dpr)
 
     // 重绘大分辨率
-    strokes[k].forEach((s) => {
+    const store = k === "mine" ? getStrokes() : strokes.peer; store.forEach((s) => {
       ctx.save()
       ctx.lineCap = 'round'; ctx.lineJoin = 'round'
       const scale = size / (cv[k].bg.width / (window.devicePixelRatio || 1))
@@ -597,7 +595,7 @@ function exportNotes() {
       const svgSize = size * 1.4
       let svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+svgSize+' '+svgSize+'" width="'+svgSize+'" height="'+svgSize+'">'
       svg += '<rect width="'+svgSize+'" height="'+svgSize+'" fill="#faf8f0"/>'
-      strokes[k].forEach((s) => {
+      const store = k === "mine" ? getStrokes() : strokes.peer; store.forEach((s) => {
         const pts = s.points.map((p) => `${p.x*exportScale/(dpr||1)},${p.y*exportScale/(dpr||1)}`).join(' ')
         svg += '<path d="M'+pts+'" stroke="'+escHtml(s.color)+'" stroke-width="'+(s.size*exportScale/(dpr||1))+
           '" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>'
