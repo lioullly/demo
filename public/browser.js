@@ -667,43 +667,8 @@ function handleBlockMsg(msg) {
 
 
 /* ── 触摸手势 (双指缩放/平移) ── */
-;(function setupGestures() {
-  let initDist = 0, initScale = 1, initX = 0, initY = 0, panX = 0, panY = 0
-  const wrap = document.getElementById('wrap-mine')
-  if (!wrap) return
-
-  wrap.addEventListener('touchstart', (e) => {
-    if (e.touches.length === 2) {
-      const dx = e.touches[0].clientX - e.touches[1].clientX
-      const dy = e.touches[0].clientY - e.touches[1].clientY
-      initDist = Math.hypot(dx, dy)
-      initScale = parseFloat(wrap.style.transform?.match(/scale\(([\d.]+)\)/)?.[1] || 1)
-      initX = panX; initY = panY
-    }
-  }, { passive: false })
-
-  wrap.addEventListener('touchmove', (e) => {
-    if (e.touches.length === 2) {
-      e.preventDefault()
-      const dx = e.touches[0].clientX - e.touches[1].clientX
-      const dy = e.touches[0].clientY - e.touches[1].clientY
-      const dist = Math.hypot(dx, dy)
-      const newScale = Math.min(3, Math.max(0.5, initScale * dist / initDist))
-      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2
-      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2
-      panX = initX + (midX - (initX ?? midX)); panY = initY + (midY - (initY ?? midY))
-      wrap.style.transform = `translate(${panX}px,${panY}px) scale(${newScale})`
-      wrap.style.transformOrigin = '0 0'
-    }
-  }, { passive: false })
-
-  wrap.addEventListener('touchend', () => {
-    initDist = 0
-  })
-})()
-
-// Double tap to reset zoom
+// Zoom: use browser native pinch zoom (enabled in viewport meta)
+// Reset zoom with double-tap
 document.getElementById('wrap-mine')?.addEventListener('dblclick', () => {
-  const wrap = document.getElementById('wrap-mine')
-  if (wrap) wrap.style.transform = ''
+  document.body.style.zoom = ''
 })
