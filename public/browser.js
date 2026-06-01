@@ -168,43 +168,32 @@ function setupCanvas() {
   if (cp) cp.oninput = (e) => { color = e.target.value }
   if (ss) ss.oninput = (e) => { size = +e.target.value }
 
-  // Add block menu
-  const menu = document.querySelector('.add-block-menu')
-  const addBtn = $('btn-add-block')
-  if (addBtn) addBtn.onclick = () => { if (menu) menu.style.display = menu.style.display === 'none' ? 'block' : 'none' }
-  if (menu) menu.querySelectorAll('div').forEach((el) => {
-    el.onclick = () => {
-      menu.style.display = 'none'
-      const type = el.dataset.type
-      if (type === 'img') {
-        const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*'
-        inp.onchange = () => {
-          if (!inp.files[0]) return
-          const file = inp.files[0]
-          if (file.size > 10 * 1024 * 1024) { alert('Image too large (>10MB). Please use a smaller image.'); return }
-          const reader = new FileReader()
-          reader.onload = () => {
-            const img = new Image(); img.src = reader.result
-            img.onload = () => {
-              // Compress: max 800px, JPEG quality 0.6
-              const MAX_W = 800
-              let w = img.width, h = img.height
-              if (w > MAX_W) { h = Math.round(h * MAX_W / w); w = MAX_W }
-              const c = document.createElement('canvas'); c.width = w; c.height = h
-              const ctx = c.getContext('2d')
-              ctx.drawImage(img, 0, 0, w, h)
-              const compressed = c.toDataURL('image/jpeg', 0.6)
-              addBlock(type, { src: compressed, alt: file.name, width: w, height: h })
-            }
-          }
-          reader.readAsDataURL(file)
+  // Text block button
+  const textBtn = $('btn-add-text')
+  if (textBtn) textBtn.onclick = () => addBlock('p', { text: '' })
+  // Image block button
+  const imgBtn = $('btn-add-image')
+  if (imgBtn) imgBtn.onclick = () => {
+    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*'
+    inp.onchange = () => {
+      if (!inp.files[0]) return
+      const file = inp.files[0]
+      if (file.size > 10*1024*1024) { alert('Image too large'); return }
+      const reader = new FileReader()
+      reader.onload = () => {
+        const img = new Image(); img.src = reader.result
+        img.onload = () => {
+          const MAX_W = 800; let w = img.width, h = img.height
+          if (w > MAX_W) { h = Math.round(h * MAX_W / w); w = MAX_W }
+          const c = document.createElement('canvas'); c.width = w; c.height = h
+          c.getContext('2d').drawImage(img, 0, 0, w, h)
+          addBlock('img', { src: c.toDataURL('image/jpeg', 0.6), alt: file.name, width: w, height: h })
         }
-        inp.click()
-      } else {
-        addBlock(type, type.startsWith('h') ? { level: parseInt(type[1]), text: '' } : type === 'todo' ? { text: '', checked: false } : { text: '' })
       }
+      reader.readAsDataURL(file)
     }
-  })
+    inp.click()
+  }
   const vBoth = $('btn-view-both'), vMine = $('btn-view-mine'), pp = $('panel-peer')
   if (vBoth) vBoth.onclick = () => { if(pp)pp.style.display='';resize();vBoth.className='on';if(vMine)vMine.className='' }
   if (vMine) vMine.onclick = () => { if(pp)pp.style.display='none';resize();vMine.className='on';if(vBoth)vBoth.className='' }
@@ -300,6 +289,10 @@ function handleWS(e) {
     } else if (msg.type === 'erase') {
       msg.payload.strokeIds.forEach((id) => strokes.peer.delete(id))
       redrawBoard('peer')
+    } else if (msg.type === 'erase_point') {
+      const { strokes: updated } = msg.payload
+      if (updated) updated.forEach((u) => { strokes.peer.set(u.id, u) })
+      redrawBoard('peer')
     } else if (msg.type === 'text') {
       const ctx = cv.peer.ctxBg
       ctx.save(); ctx.font = '16px system-ui'; ctx.fillStyle = '#1a1a1a'; ctx.fillText(msg.payload.content, msg.payload.x, msg.payload.y); ctx.restore()
@@ -390,25 +383,41 @@ function draw(ctx, pts, c, s) {
 function eraseLocal(board, p) {
   const store = board === 'mine' ? getStrokes() : strokes.peer
   const mode = ($('eraser-mode')?.value) || 'point'
-  const hit = []
+  const R = 12 // eraser radius
+  let changed = false
 
   if (mode === 'stroke') {
-    // Stroke erase: remove the first stroke that contains this point
+    // Stroke erase: remove entire strokes that touch the eraser
     for (const [id, s] of store) {
-      if (s.points.some((q) => (q.x-p.x)**2 + (q.y-p.y)**2 < 144)) {
-        hit.push(id); break // Only erase one stroke per touch
+      if (s.points.some((q) => (q.x-p.x)**2 + (q.y-p.y)**2 < R*R)) {
+        store.delete(id); if (board==='mine') deleteStroke(id)
+        sendWS({ type:'erase', payload:{ strokeIds:[id] }, pageId:getPageId(), userId:USER_ID, userName, id:uid(), ts:Date.now(), source:USER_ID })
+        changed = true; break
       }
     }
   } else {
-    // Point erase: remove all strokes touched by the eraser radius
-    store.forEach((s, id) => { if (s.points.some((q) => (q.x-p.x)**2 + (q.y-p.y)**2 < 144)) hit.push(id) })
+    // Point erase: remove individual points within radius, split if needed
+    const toDelete = []; const toUpdate = []
+    for (const [id, s] of store) {
+      const keep = s.points.filter((q) => (q.x-p.x)**2 + (q.y-p.y)**2 > R*R)
+      if (keep.length === s.points.length) continue
+      if (keep.length === 0) {
+        toDelete.push(id)
+      } else {
+        toUpdate.push({ id, pts: keep, color: s.color, size: s.size })
+      }
+    }
+    toDelete.forEach((id) => { store.delete(id); if (board==='mine') deleteStroke(id) })
+    toUpdate.forEach((u) => {
+      store.set(u.id, { points: u.pts, color: u.color, size: u.size })
+      if (board==='mine') saveStroke(u.id, u.pts, u.color, u.size)
+    })
+    if (toDelete.length || toUpdate.length) {
+      changed = true
+      sendWS({ type:'erase_point', payload:{ point:p, radius:R, strokes:toUpdate }, pageId:getPageId(), userId:USER_ID, userName, id:uid(), ts:Date.now(), source:USER_ID })
+    }
   }
-
-  if (hit.length) {
-    hit.forEach((id) => { store.delete(id); if (board==='mine') deleteStroke(id) })
-    sendWS({ type:'erase', payload:{ strokeIds:hit }, pageId:getPageId(), userId:USER_ID, userName, id:uid(), ts:Date.now(), source:USER_ID })
-    redrawBoard(board)
-  }
+  if (changed) redrawBoard(board)
 }
 
 function redrawBoard(board) {
@@ -585,6 +594,19 @@ function sendBlockUpdate(id, text, checked) {
   sendWS({ type:'block_update', blockId:id, payload:{ text, checked }, pageId:getPageId(), userId:USER_ID, id:uid(), ts:Date.now(), source:USER_ID })
 }
 
+function showChrome(div) {
+  div.style.borderColor = '#93c5fd'; div.style.borderStyle = 'dashed'
+  const h = div.querySelectorAll('[data-chrome]')
+  h.forEach((el) => { el.style.display = '' })
+}
+function hideChrome(div) {
+  if (document.activeElement === div || div.contains(document.activeElement)) return
+  div.style.borderColor = 'transparent'; div.style.borderStyle = 'solid'
+  const h = div.querySelectorAll('[data-chrome]')
+  h.forEach((el) => { el.style.display = 'none' })
+}
+function resetChrome(div) { const h = div.querySelectorAll('[data-chrome]'); h.forEach((el) => { el.style.display = 'none' }) }
+
 function addDragHandles(div, id, type, readOnly) {
   if (readOnly) return
   // Top drag bar: long dashed line with white center for grab
@@ -617,13 +639,10 @@ function addDragHandles(div, id, type, readOnly) {
       const nh = Math.max(40, rsH + ev.clientY - rsY)
       div.style.width = nw + 'px'
       div.style.minHeight = nh + 'px'
-      // Scale font with width: bigger box = bigger text
-      const scale = Math.min(2, Math.max(0.6, nw / 300))
+      // Scale font with box size
+      const scale = Math.min(2.5, Math.max(0.6, nw / 280))
       const inputs = div.querySelectorAll('input,textarea')
-      inputs.forEach((inp) => {
-        const base = type === 'h' ? (28 - (parseInt(type[1]) || 1) * 4) : 14
-        inp.style.fontSize = Math.round(base * scale) + 'px'
-      })
+      inputs.forEach((inp) => { inp.style.fontSize = Math.round(14 * scale) + 'px' })
     }
     const up = () => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up) }
     document.addEventListener('pointermove', move)
@@ -641,7 +660,12 @@ function addDragHandles(div, id, type, readOnly) {
 function makeBlock(id, type, payload, readOnly) {
   const div = document.createElement('div')
   div.className = 'block-item'; div.dataset.blockId = id; div.dataset.blockType = type
-  div.style.cssText = 'padding:8px 12px;margin:8px 4px;background:#fff;border-radius:4px;border:1.5px dashed #93c5fd;position:relative;pointer-events:auto;touch-action:manipulation;min-width:120px;min-height:40px;overflow:visible'
+  div.style.cssText = 'padding:8px 12px;margin:8px 4px;background:#fff;border-radius:4px;border:1.5px solid transparent;position:relative;pointer-events:auto;touch-action:manipulation;min-width:120px;min-height:40px;overflow:visible;transition:border-color 0.2s'
+  div.addEventListener('mouseenter', () => { div.style.borderColor = '#93c5fd'; div.style.borderStyle = 'dashed' })
+  div.addEventListener('mouseleave', () => { if (document.activeElement !== div && !div.contains(document.activeElement)) { div.style.borderColor = 'transparent'; resetChrome(div) } })
+  div.addEventListener('click', () => { showChrome(div) })
+  // Hide chrome when clicking outside
+  document.addEventListener('click', (e) => { if (!div.contains(e.target)) hideChrome(div) })
 
   addDragHandles(div, id, type, readOnly)
 

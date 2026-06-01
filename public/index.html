@@ -137,14 +137,17 @@ canvas.cross{cursor:crosshair}
         <option value="stroke">笔擦</option>
       </select>
       <div style="position:relative;display:inline-block" class="add-block-group">
-        <button id="btn-add-block">+ block</button>
-        <div class="add-block-menu" style="display:none;position:absolute;top:100%;left:0;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:4px;z-index:50;min-width:120px">
-          <div data-type="p" style="padding:4px 8px;cursor:pointer;font-size:12px">paragraph</div>
+      <button id="btn-add-text" title="添加文本框">text</button>
+      <button id="btn-add-image" title="添加图片">img</button>
           <div data-type="h1" style="padding:4px 8px;cursor:pointer;font-size:12px">heading 1</div>
           <div data-type="h2" style="padding:4px 8px;cursor:pointer;font-size:12px">heading 2</div>
           <div data-type="h3" style="padding:4px 8px;cursor:pointer;font-size:12px">heading 3</div>
           <div data-type="todo" style="padding:4px 8px;cursor:pointer;font-size:12px">todo</div>
-          <div data-type="img" style="padding:4px 8px;cursor:pointer;font-size:12px">image</div>
+          <div data-type="p" style="padding:4px 8px;cursor:pointer;font-size:12px">text</div>
+          <div data-type="h1" style="padding:4px 8px;cursor:pointer;font-size:12px">h1</div>
+          <div data-type="h2" style="padding:4px 8px;cursor:pointer;font-size:12px">h2</div>
+          <div data-type="h3" style="padding:4px 8px;cursor:pointer;font-size:12px">h3</div>
+          <div data-type="todo" style="padding:4px 8px;cursor:pointer;font-size:12px">todo</div>
         </div>
       </div>
       <input type="color" id="color-picker" value="#1a1a1a" />
