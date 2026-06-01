@@ -7,160 +7,143 @@
 <title>Handwriting Sync</title>
 <style>
 :root {
-  --bg: #f5f5f5;
-  --panel: #fff;
-  --border: #e0e0e0;
-  --accent: #a78bfa;
-  --text: #1a1a1a;
-  --sub: #888;
-  --danger: #ef4444;
-  --success: #22c55e;
+  --bg:#f5f5f5; --panel:#fff; --border:#e0e0e0;
+  --accent:#a78bfa; --text:#1a1a1a; --sub:#888;
+  --success:#22c55e; --danger:#ef4444;
 }
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: var(--bg);
-  overflow: hidden;
-  height: 100dvh;
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-}
-#app { display: flex; flex-direction: column; height: 100dvh; }
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);overflow:hidden;height:100dvh;touch-action:none;user-select:none;-webkit-user-select:none}
+#app{display:flex;flex-direction:column;height:100dvh}
 
-/* ── 顶栏 ── */
-#topbar {
-  display: flex; align-items: center; gap: 10px;
-  padding: 8px 14px; background: var(--panel); border-bottom: 1px solid var(--border);
-  flex-shrink: 0; flex-wrap: wrap;
-}
-#room-badge {
-  font-size: 12px; font-weight: 700; color: var(--accent);
-  background: #f3f0ff; padding: 4px 10px; border-radius: 6px;
-  letter-spacing: 0.15em; font-family: monospace;
-}
-#status-dot { font-size: 11px; padding: 4px 10px; border-radius: 10px; }
-.status-ok { color: var(--success); background: #f0fdf4; }
-.status-wait { color: #f59e0b; background: #fffbeb; }
-.spacer { flex: 1; }
-#host-input-box { display: flex; gap: 4px; align-items: center; }
-#host-input-box input { width: 130px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px; }
-#host-input-box button {
-  padding: 4px 10px; border: none; border-radius: 4px;
-  background: var(--accent); color: #fff; font-size: 12px; cursor: pointer;
-}
-#host-input-box button.scan { background: #fff; color: var(--accent); border: 1px solid var(--accent); }
+/* ── 大厅 ── */
+#lobby{flex:1;display:flex;align-items:center;justify-content:center;padding:16px}
+.card{background:var(--panel);border-radius:12px;padding:32px 24px;max-width:380px;width:100%;text-align:center;box-shadow:0 2px 16px rgba(0,0,0,.04)}
+.card h2{font-size:20px;color:var(--text);margin-bottom:4px}
+.card p.sub{font-size:13px;color:var(--sub);margin-bottom:16px}
+.room-row{display:flex;align-items:center;gap:8px;background:var(--bg);border-radius:8px;padding:10px 12px;margin-bottom:12px}
+.room-row input{flex:1;border:none;background:transparent;font-size:20px;font-family:monospace;text-align:center;letter-spacing:.15em;color:var(--accent);font-weight:700;min-width:0;text-transform:uppercase}
+.room-row input:focus{outline:none}
+.room-row button{padding:4px 10px;border:none;background:var(--accent);color:#fff;border-radius:4px;font-size:11px;cursor:pointer;flex-shrink:0}
+.host-row{display:flex;gap:6px;align-items:center;margin-bottom:8px}
+.host-row input{flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px}
+.host-row button{padding:8px 14px;border:none;border-radius:6px;font-size:13px;cursor:pointer}
+.host-row .scan{background:#fff;color:var(--accent);border:1px solid var(--accent)}
+.host-row .connect{background:var(--accent);color:#fff}
+.btn{display:block;width:100%;padding:12px;border:none;border-radius:8px;font-size:15px;cursor:pointer;transition:all .15s;margin-bottom:8px;font-weight:600}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:disabled{opacity:.4;cursor:not-allowed}
+.mode-tabs{display:flex;gap:0;margin-bottom:16px;background:var(--bg);border-radius:8px;padding:3px}
+.mode-tabs button{flex:1;padding:8px;border:none;background:transparent;border-radius:6px;font-size:13px;cursor:pointer;color:var(--sub)}
+.mode-tabs button.on{background:var(--panel);color:var(--text);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.sep{height:1px;background:var(--border);margin:16px 0}
 
-/* ── 工具栏 ── */
-#toolbar {
-  display: flex; align-items: center; gap: 8px;
-  padding: 6px 14px; background: var(--panel); border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-#toolbar button {
-  padding: 5px 12px; border: 1px solid #d0d0d0; border-radius: 6px;
-  background: #fff; cursor: pointer; font-size: 12px; transition: all 0.15s;
-}
-#toolbar button:hover { background: #f0f0f0; }
-#toolbar button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
-#toolbar input[type="color"] { width: 28px; height: 26px; border: none; cursor: pointer; border-radius: 4px; }
-#toolbar input[type="range"] { width: 80px; }
+/* ── 画布 ── */
+#canvas-view{display:none;flex:1;flex-direction:column}
+#canvas-view.show{display:flex}
+#topbar{display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--panel);border-bottom:1px solid var(--border);flex-shrink:0}
+#room-badge{font-size:12px;font-weight:700;color:var(--accent);background:#f3f0ff;padding:4px 10px;border-radius:6px;letter-spacing:.15em;font-family:monospace;cursor:pointer}
+#status-dot{font-size:11px;padding:4px 10px;border-radius:10px;margin-left:auto}
+.status-ok{color:var(--success);background:#f0fdf4}
+.status-wait{color:#f59e0b;background:#fffbeb}
+#toolbar{display:flex;align-items:center;gap:6px;padding:5px 12px;background:var(--panel);border-bottom:1px solid var(--border);flex-shrink:0}
+#toolbar button{padding:5px 12px;border:1px solid #d0d0d0;border-radius:6px;background:#fff;cursor:pointer;font-size:12px}
+#toolbar button:hover{background:#f0f0f0}
+#toolbar button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+#toolbar input[type="color"]{width:28px;height:26px;border:none;cursor:pointer;border-radius:4px}
+#toolbar input[type="range"]{width:80px}
+#panels{display:flex;flex:1;overflow:hidden;gap:10px;padding:10px}
+.panel{flex:1;display:flex;flex-direction:column;background:var(--panel);border-radius:8px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.04);min-width:0}
+.panel-header{font-size:11px;font-weight:600;color:var(--sub);padding:5px 10px;border-bottom:1px solid var(--border);letter-spacing:.05em;display:flex;align-items:center;gap:6px}
+.dot{width:6px;height:6px;border-radius:50%}
+.dot-mine{background:var(--accent)}
+.dot-peer{background:var(--success)}
+.canvas-wrap{flex:1;position:relative;overflow:hidden}
+canvas{position:absolute;top:0;left:0}
+canvas.cross{cursor:crosshair}
 
-/* ── 双面板 ── */
-#panels {
-  display: flex; flex: 1; overflow: hidden; gap: 12px; padding: 12px;
-}
-.panel {
-  flex: 1; display: flex; flex-direction: column;
-  background: var(--panel); border-radius: 8px; overflow: hidden;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.04);
-  min-width: 0;
-}
-.panel-header {
-  font-size: 11px; font-weight: 600; color: var(--sub);
-  padding: 6px 12px; border-bottom: 1px solid var(--border);
-  text-transform: uppercase; letter-spacing: 0.05em;
-  display: flex; align-items: center; gap: 6px;
-}
-.panel-header .dot { width: 6px; height: 6px; border-radius: 50%; }
-.dot-mine { background: var(--accent); }
-.dot-peer { background: var(--success); }
-.canvas-wrap { flex: 1; position: relative; overflow: hidden; }
-canvas { position: absolute; top: 0; left: 0; cursor: crosshair; }
-canvas.readonly { cursor: default; }
+#text-overlay{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:14px;box-shadow:0 4px 24px rgba(0,0,0,.1);z-index:100;width:280px}
+#text-overlay.show{display:block}
+#text-overlay textarea{width:100%;height:80px;border:1px solid var(--border);border-radius:4px;padding:8px;font-size:14px;resize:none}
+#text-overlay button{margin-top:8px;padding:6px 14px;border:none;border-radius:4px;background:var(--accent);color:#fff;font-size:13px;cursor:pointer}
 
-/* ── 文字输入 ── */
-#text-overlay {
-  display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
-  background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
-  padding: 16px; box-shadow: 0 4px 24px rgba(0,0,0,0.1); z-index: 100;
-  width: 280px;
-}
-#text-overlay.show { display: block; }
-#text-overlay textarea { width: 100%; height: 80px; border: 1px solid var(--border); border-radius: 4px; padding: 8px; font-size: 14px; resize: none; }
-#text-overlay button {
-  margin-top: 8px; padding: 6px 16px; border: none; border-radius: 4px;
-  background: var(--accent); color: #fff; font-size: 13px; cursor: pointer;
-}
-
-/* ── 响应式 ── */
-@media (max-width: 600px) {
-  #panels { flex-direction: column; gap: 8px; padding: 6px; }
-  .panel { flex: none; height: 45dvh; }
-  #topbar { gap: 4px; }
-  #host-input-box input { width: 90px; }
+@media (max-width:600px){
+  #panels{flex-direction:column;gap:6px;padding:4px}
+  .panel{flex:none;height:42dvh}
 }
 </style>
 </head>
 <body>
 <div id="app">
-  <!-- 顶栏 -->
-  <div id="topbar">
-    <span id="room-badge">Room: —</span>
-    <span id="status-dot" class="status-wait">未连接</span>
-    <span class="spacer"></span>
-    <div id="host-input-box">
-      <input id="host-addr" placeholder="输入IP" value="" />
-      <button class="scan" id="btn-scan">扫描</button>
-      <button id="btn-connect">连接</button>
+  <!-- ═══ 大厅 ═══ -->
+  <div id="lobby">
+    <div class="card" id="lobby-card">
+      <h2>Handwriting Sync</h2>
+      <p class="sub">双人实时手写笔记</p>
+
+      <!-- 模式切换 -->
+      <div class="mode-tabs" id="mode-tabs">
+        <button id="tab-create" class="on">创建房间</button>
+        <button id="tab-join">加入房间</button>
+      </div>
+
+      <!-- 房间码 -->
+      <div class="room-row" id="create-row">
+        <input id="create-room-code" maxlength="6" spellcheck="false" />
+        <button id="btn-random">随机</button>
+      </div>
+
+      <!-- 加入房间 -->
+      <input id="join-room-input" style="display:none;width:100%;padding:12px;border:1px solid var(--border);border-radius:8px;font-size:18px;font-family:monospace;text-align:center;text-transform:uppercase;letter-spacing:.15em;margin-bottom:12px" maxlength="6" placeholder="输入房间码" spellcheck="false" />
+
+      <!-- 主机地址 -->
+      <p style="font-size:11px;color:var(--sub);margin-bottom:4px;text-align:left">主机地址</p>
+      <div class="host-row">
+        <input id="host-addr" placeholder="IP 地址 或 域名" />
+        <button class="scan" id="btn-scan">扫描</button>
+        <button class="connect" id="btn-connect-lobby">连接</button>
+      </div>
+
+      <button class="btn btn-primary" id="btn-enter">进入房间</button>
+      <p id="lobby-msg" style="font-size:11px;color:var(--sub);margin-top:8px;min-height:16px"></p>
     </div>
   </div>
 
-  <!-- 工具栏 -->
-  <div id="toolbar">
-    <button id="btn-pen" class="on">pen</button>
-    <button id="btn-eraser">eraser</button>
-    <button id="btn-text">text</button>
-    <input type="color" id="color-picker" value="#1a1a1a" />
-    <input type="range" id="size-slider" min="1" max="20" value="3" />
-    <span class="spacer"></span>
-    <button id="btn-view-both" class="on">双页</button>
-    <button id="btn-view-mine">我的</button>
-  </div>
-
-  <!-- 双面板 -->
-  <div id="panels">
-    <!-- 对方 -->
-    <div class="panel" id="panel-peer">
-      <div class="panel-header"><span class="dot dot-peer"></span>朋友的笔记</div>
-      <div class="canvas-wrap" id="wrap-peer">
-        <canvas id="cv-peer-bg"></canvas><canvas id="cv-peer-fg" class="readonly"></canvas>
+  <!-- ═══ 画布 ═══ -->
+  <div id="canvas-view">
+    <div id="topbar">
+      <span id="room-badge" title="点击复制链接">Room: —</span>
+      <button id="btn-share" style="font-size:11px;padding:4px 10px;border:1px solid var(--border);border-radius:4px;background:#fff;cursor:pointer">分享</button>
+      <span id="status-dot" class="status-wait">未连接</span>
+    </div>
+    <div id="toolbar">
+      <button id="btn-pen" class="on">pen</button>
+      <button id="btn-eraser">eraser</button>
+      <button id="btn-text">text</button>
+      <input type="color" id="color-picker" value="#1a1a1a" />
+      <input type="range" id="size-slider" min="1" max="20" value="3" />
+      <span style="flex:1"></span>
+      <button id="btn-view-both" class="on">双页</button>
+      <button id="btn-view-mine">我的</button>
+    </div>
+    <div id="panels">
+      <div class="panel" id="panel-peer">
+        <div class="panel-header"><span class="dot dot-peer"></span>朋友的笔记</div>
+        <div class="canvas-wrap" id="wrap-peer">
+          <canvas id="cv-peer-bg"></canvas><canvas id="cv-peer-fg"></canvas>
+        </div>
+      </div>
+      <div class="panel" id="panel-mine">
+        <div class="panel-header"><span class="dot dot-mine"></span>我的笔记</div>
+        <div class="canvas-wrap" id="wrap-mine">
+          <canvas id="cv-mine-bg"></canvas><canvas id="cv-mine-fg" class="cross"></canvas>
+        </div>
       </div>
     </div>
-    <!-- 自己 -->
-    <div class="panel" id="panel-mine">
-      <div class="panel-header"><span class="dot dot-mine"></span>我的笔记</div>
-      <div class="canvas-wrap" id="wrap-mine">
-        <canvas id="cv-mine-bg"></canvas><canvas id="cv-mine-fg"></canvas>
-      </div>
+    <div id="text-overlay">
+      <textarea id="text-input" placeholder="输入文字..."></textarea>
+      <button id="text-send">发送</button>
+      <button id="text-cancel" style="background:#888;margin-left:4px;">取消</button>
     </div>
-  </div>
-
-  <!-- 文字弹窗 -->
-  <div id="text-overlay">
-    <textarea id="text-input" placeholder="输入文字..."></textarea>
-    <button id="text-send">发送</button>
-    <button id="text-cancel" style="background:#888;margin-left:4px;">取消</button>
   </div>
 </div>
 <script src="./browser.js" type="module"></script>
