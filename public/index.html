@@ -132,6 +132,10 @@ canvas.cross{cursor:crosshair}
     <div id="toolbar">
       <button id="btn-pen" class="on">pen</button>
       <button id="btn-eraser">eraser</button>
+      <select id="eraser-mode" style="display:none;font-size:11px;padding:2px 4px;border:1px solid var(--border);border-radius:4px">
+        <option value="point">点擦</option>
+        <option value="stroke">笔擦</option>
+      </select>
       <div style="position:relative;display:inline-block" class="add-block-group">
         <button id="btn-add-block">+ block</button>
         <div class="add-block-menu" style="display:none;position:absolute;top:100%;left:0;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:4px;z-index:50;min-width:120px">
