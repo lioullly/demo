@@ -54,9 +54,18 @@ function connectWS(host) {
     const url = `ws://${host}:${WS_PORT}?room=${encodeURIComponent(room)}`
     lobbyMsg.textContent = '连接中...'
     ws = new WebSocket(url)
-    ws.onopen = () => { lobbyMsg.textContent = '已连接'; connectedHost = host; resolve(true) }
-    ws.onerror = () => { lobbyMsg.textContent = '连接失败'; ws = null; resolve(false) }
-    ws.onclose = () => { if (ws) { lobbyMsg.textContent = '已断开'; ws = null } }
+    ws.onopen = () => {
+      lobbyMsg.textContent = '已连接'; connectedHost = host; resolve(true)
+      if (statusDot) { statusDot.textContent = '已连接'; statusDot.className = 'status-ok'; $('btn-reconnect').style.display = 'none' }
+    }
+    ws.onerror = () => {
+      lobbyMsg.textContent = '连接失败'; ws = null; resolve(false)
+      if (statusDot) { statusDot.textContent = '已断开'; statusDot.className = 'status-wait'; $('btn-reconnect').style.display = '' }
+    }
+    ws.onclose = () => {
+      if (ws) { lobbyMsg.textContent = '已断开'; ws = null }
+      if (statusDot) { statusDot.textContent = '已断开'; statusDot.className = 'status-wait'; $('btn-reconnect').style.display = '' }
+    }
     setTimeout(() => { if (ws?.readyState !== WebSocket.OPEN) { ws = null; resolve(false) } }, 3000)
   })
 }
@@ -90,7 +99,7 @@ btnConnectLobby.onclick = async () => {
   if (!getRoom()) { lobbyMsg.textContent = '请输入房间码'; return }
   room = getRoom()
   const ok = await connectWS(host)
-  if (ok) done()
+  if (ok) done(host)
   else lobbyMsg.textContent = '连接失败，请检查地址和房间码'
 }
 
@@ -100,25 +109,28 @@ btnEnter.onclick = async () => {
   const host = hostInput.value.trim() || location.hostname
   if (host && host !== 'localhost' && host !== '127.0.0.1') {
     const ok = await connectWS(host)
-    if (ok) { done(); return }
+    if (ok) { done(host); return }
   }
-  // 连接 localhost 或失败也先进画布
-  done()
+  done(hostInput.value.trim() || location.hostname)
 }
 
-function done() {
+function done(host) {
   lobby.style.display = 'none'
   canvasView.classList.add('show')
   roomBadge.textContent = `Room: ${room}`
-  const shareURL = () => {
-    const host = connectedHost || hostInput.value.trim()
-    const url = `${location.origin}${location.pathname}?room=${encodeURIComponent(room)}&host=${encodeURIComponent(host)}`
-    navigator.clipboard?.writeText(url).catch(()=>{})
-    roomBadge.textContent = 'Copied!'
-    setTimeout(() => { roomBadge.textContent = `Room: ${room}` }, 1500)
+
+  const getShareURL = () => {
+    const h = connectedHost || host || location.hostname
+    return `${location.origin}${location.pathname}?room=${encodeURIComponent(room)}&host=${encodeURIComponent(h)}`
   }
-  roomBadge.onclick = shareURL
-  $('btn-share').onclick = shareURL
+  const doShare = () => {
+    const url = getShareURL()
+    navigator.clipboard?.writeText(url).catch(()=>{})
+    roomBadge.textContent = 'Copied! URL: ' + url.split('?')[1]
+    setTimeout(() => { roomBadge.textContent = `Room: ${room}` }, 2000)
+  }
+  roomBadge.onclick = doShare
+  $('btn-share').onclick = doShare
   setupCanvas()
 }
 
@@ -148,6 +160,18 @@ function setupCanvas() {
   $('btn-view-mine').onclick = () => { $('panel-peer').style.display='none';resize();$('btn-view-mine').className='on';$('btn-view-both').className='' }
   $('text-send').onclick = sendText
   $('text-cancel').onclick = () => { $('text-input').value=''; $('text-overlay').classList.remove('show') }
+
+  // 重连按钮
+  const btnReconnect = $('btn-reconnect')
+  btnReconnect.onclick = async () => {
+    btnReconnect.textContent = '...'; btnReconnect.disabled = true
+    const host = connectedHost || hostInput.value.trim() || location.hostname
+    const ok = await connectWS(host)
+    btnReconnect.textContent = '重连'; btnReconnect.disabled = false
+    if (!ok) {
+      statusDot.textContent = '重连失败'; statusDot.className = 'status-wait'
+    }
+  }
 
   setupPointer('mine')
   cv.peer.fg.style.pointerEvents = 'none'
@@ -284,5 +308,5 @@ if (urlRoom) {
   createInput.value = room
   const h = urlHost || location.hostname
   hostInput.value = h
-  connectWS(h).then((ok) => { if (ok) done(); else done() })
+  connectWS(h).then((ok) => { if (ok) done(h); else done(h) })
 }
