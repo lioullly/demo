@@ -5,17 +5,15 @@ cd /d "%~dp0"
 
 if "%~1"=="" (set ROOM=demo1234) else (set ROOM=%~1)
 
+echo Stopping old server...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":3000"') do taskkill /F /PID %%a >nul 2>&1
+
 echo ================================
 echo   Handwriting Sync Server
 echo   Room: %ROOM%
 echo ================================
 echo.
 call npm install --silent
-echo.
-echo Local: http://localhost:3000?room=%ROOM%
-echo.
-echo For public access, open a NEW terminal and run:
-echo   npx localtunnel --port 3000
 echo.
 node server.js
 pause
