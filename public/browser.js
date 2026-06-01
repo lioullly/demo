@@ -110,6 +110,8 @@ btnConnectLobby.onclick = async () => {
   if (!host) { lobbyMsg.textContent = '请输入主机地址'; return }
   if (!getRoom()) { lobbyMsg.textContent = '请输入房间码'; return }
   room = getRoom()
+  const nickInput = $('nickname-input')
+  userName = (nickInput?.value?.trim()) || ('用户' + Math.random().toString(36).slice(2,5))
   const ok = await connectWS(host)
   if (ok) done(host)
   else lobbyMsg.textContent = '连接失败，请检查地址和房间码'
@@ -118,9 +120,11 @@ btnConnectLobby.onclick = async () => {
 btnEnter.onclick = async () => {
   room = getRoom()
   if (room.length < 4) { lobbyMsg.textContent = '房间码至少 4 位'; return }
-  userName = $('nickname-input').value.trim() || ('用户' + Math.random().toString(36).slice(2,5))
+  const nickInput = $('nickname-input')
+  userName = (nickInput?.value?.trim()) || ('用户' + Math.random().toString(36).slice(2,5))
   USER_ID = `u_${userName}_${Date.now().toString(36)}`
-  $('user-badge').textContent = userName
+  const userBadge = $('user-badge')
+  if (userBadge) userBadge.textContent = userName
   const host = hostInput.value.trim() || location.hostname
   if (host && host !== 'localhost' && host !== '127.0.0.1') {
     const ok = await connectWS(host)
