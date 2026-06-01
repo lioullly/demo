@@ -91,12 +91,18 @@ fg.onpointercancel = () => { isDrawing = false; points = []; fgCtx.clearRect(0, 
 
 /* ── WebSocket ── */
 let ws = null
+// 从 URL 参数获取房间码和服务器地址
+const params = new URLSearchParams(window.location.search)
+const URL_ROOM = params.get('room') || ''
+const URL_HOST = params.get('host') || ''
 
 function sendWS(msg) { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg)) }
 
 function connect(host) {
   if (ws) { ws.close(); ws = null }
-  const url = `ws://${host}:${WS_PORT}`
+  const room = URL_ROOM || prompt('请输入房间码:') || ''
+  if (!room) { statusEl.textContent = '缺少房间码'; return }
+  const url = `ws://${host}:${WS_PORT}?room=${encodeURIComponent(room)}`
   statusEl.textContent = '连接中...'; statusEl.className = 'status-wait'
   ws = new WebSocket(url)
   ws.onopen = () => { statusEl.textContent = '已连接'; statusEl.className = 'status-ok' }
@@ -170,8 +176,20 @@ btnScan.onclick = async () => {
   }
 }
 
-// 自动尝试连接 localhost
-setTimeout(() => { hostInput.value = 'localhost'; connect('localhost') }, 300)
+// 自动连接
+setTimeout(() => {
+  if (URL_HOST) {
+    hostInput.value = URL_HOST
+    connect(URL_HOST)
+  } else if (URL_ROOM) {
+    // 有房间码无主机 → 需要手动输入 IP
+    statusEl.textContent = '请输入主机 IP'
+  } else {
+    // 本地开发
+    hostInput.value = 'localhost'
+    connect('localhost')
+  }
+}, 300)
 
 /* ── IndexedDB 本地持久化 ── */
 function idb() {
