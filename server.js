@@ -9,6 +9,7 @@ import { createServer } from 'http'
 import { readFileSync, existsSync } from 'fs'
 import { extname, join, dirname } from 'path'
 import { fileURLToPath } from 'url'
+import { networkInterfaces } from 'os'
 
 const { ROOM } = process.env
 if (!ROOM) {
@@ -70,7 +71,16 @@ const http = createServer((req, res) => {
 })
 
 http.listen(WS_PORT, '0.0.0.0', () => {
-  console.log(`Server running on port ${WS_PORT}`)
-  console.log(`Room: ${ROOM}`)
-  console.log(`Client URL: http://<服务器IP>:${WS_PORT}?room=${ROOM}`)
+  const ifaces = networkInterfaces()
+  console.log(`\n  Room: ${ROOM}`)
+  console.log(`  Port: ${WS_PORT}\n`)
+  console.log('  ----- 本机 IP (平板输入这个地址) -----')
+  for (const [name, addrs] of Object.entries(ifaces)) {
+    for (const addr of addrs) {
+      if (addr.family === 'IPv4' && !addr.internal) {
+        console.log(`    http://${addr.address}:${WS_PORT}?room=${ROOM}`)
+      }
+    }
+  }
+  console.log('')
 })
