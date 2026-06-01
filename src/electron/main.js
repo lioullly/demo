@@ -12,6 +12,7 @@ import { networkInterfaces } from 'os'
 import { app, BrowserWindow, ipcMain } from 'electron'
 import { startHostDiscovery, stopDiscovery } from '../sync/lan.js'
 import { createWSServer } from '../sync/transport.js'
+import { initDB } from '../db/sqlite.js'
 
 let mainWindow = null
 let udpSocket = null
@@ -98,7 +99,8 @@ ipcMain.handle('get-lan-ip', () => {
 
 /* ── 应用生命周期 ── */
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  await initDB()
   createWindow()
   startSyncServices()
 })

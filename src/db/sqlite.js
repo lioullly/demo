@@ -1,139 +1,117 @@
 /**
- * SQLite 本地数据库 — better-sqlite3
- *
- * 存储本地手写笔记，仅存储自己的页面数据。
+ * SQLite 本地数据库 — sql.js (纯 JS，无需编译)
  */
 
-import Database from 'better-sqlite3'
+import initSqlJs from 'sql.js'
+import { app } from 'electron'
 import path from 'path'
-import { app } from 'electron' // 仅 Electron 主进程可用
+import fs from 'fs'
 
 let db = null
 
-/** 初始化数据库 */
-export function initDB(userId = 'default') {
-  const dbPath = path.join(app.getPath('userData'), `notes_${userId}.db`)
-  db = new Database(dbPath)
-  db.pragma('journal_mode = WAL')
+/** 初始化数据库（异步） */
+export async function initDB(userId = 'default') {
+  const SQL = await initSqlJs()
+  const dbDir = app.getPath('userData')
+  const dbPath = path.join(dbDir, `notes_${userId}.db`)
 
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS pages (
-      id TEXT PRIMARY KEY,
-      page_number INTEGER NOT NULL,
-      created_at INTEGER DEFAULT (strftime('%s','now')*1000),
-      updated_at INTEGER DEFAULT (strftime('%s','now')*1000)
-    );
+  if (fs.existsSync(dbPath)) {
+    const buffer = fs.readFileSync(dbPath)
+    db = new SQL.Database(buffer)
+  } else {
+    db = new SQL.Database()
+  }
 
-    CREATE TABLE IF NOT EXISTS strokes (
-      id TEXT PRIMARY KEY,
-      page_id TEXT NOT NULL REFERENCES pages(id),
-      user_id TEXT NOT NULL,
-      color TEXT DEFAULT '#000000',
-      width REAL DEFAULT 3.0,
-      points TEXT NOT NULL,
-      ts INTEGER NOT NULL,
-      FOREIGN KEY (page_id) REFERENCES pages(id)
-    );
+  db.run('PRAGMA journal_mode = WAL')
 
-    CREATE TABLE IF NOT EXISTS text_blocks (
-      id TEXT PRIMARY KEY,
-      page_id TEXT NOT NULL REFERENCES pages(id),
-      user_id TEXT NOT NULL,
-      content TEXT DEFAULT '',
-      pos_x REAL DEFAULT 0,
-      pos_y REAL DEFAULT 0,
-      ts INTEGER NOT NULL,
-      FOREIGN KEY (page_id) REFERENCES pages(id)
-    );
-
-    CREATE TABLE IF NOT EXISTS images (
-      id TEXT PRIMARY KEY,
-      page_id TEXT NOT NULL REFERENCES pages(id),
-      user_id TEXT NOT NULL,
-      url TEXT NOT NULL,
-      pos_x REAL DEFAULT 0,
-      pos_y REAL DEFAULT 0,
-      width REAL DEFAULT 0,
-      height REAL DEFAULT 0,
-      ts INTEGER NOT NULL,
-      FOREIGN KEY (page_id) REFERENCES pages(id)
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_strokes_page ON strokes(page_id);
-    CREATE INDEX IF NOT EXISTS idx_text_page ON text_blocks(page_id);
-    CREATE INDEX IF NOT EXISTS idx_images_page ON images(page_id);
-  `)
+  db.run(`CREATE TABLE IF NOT EXISTS pages (
+    id TEXT PRIMARY KEY,
+    page_number INTEGER NOT NULL,
+    created_at INTEGER,
+    updated_at INTEGER
+  )`)
+  db.run(`CREATE TABLE IF NOT EXISTS strokes (
+    id TEXT PRIMARY KEY, page_id TEXT, user_id TEXT,
+    color TEXT, width REAL, points TEXT, ts INTEGER
+  )`)
+  db.run(`CREATE TABLE IF NOT EXISTS text_blocks (
+    id TEXT PRIMARY KEY, page_id TEXT, user_id TEXT,
+    content TEXT, pos_x REAL, pos_y REAL, ts INTEGER
+  )`)
+  db.run(`CREATE TABLE IF NOT EXISTS images (
+    id TEXT PRIMARY KEY, page_id TEXT, user_id TEXT,
+    url TEXT, pos_x REAL, pos_y REAL, width REAL, height REAL, ts INTEGER
+  )`)
 
   console.log(`[DB] Initialized: ${dbPath}`)
   return db
 }
 
-/** 关闭数据库 */
-export function closeDB() {
-  if (db) {
-    db.close()
-    db = null
-    console.log('[DB] Closed')
-  }
+/** 保存到磁盘 */
+function save() {
+  if (!db) return
+  const data = db.export()
+  const buffer = Buffer.from(data)
+  const dbDir = app.getPath('userData')
+  const files = fs.readdirSync(dbDir).filter((f) => f.startsWith('notes_') && f.endsWith('.db'))
+  const dbPath = path.join(dbDir, files[0] || 'notes_default.db')
+  fs.writeFileSync(dbPath, buffer)
 }
 
-/* ── 页面操作 ── */
+export function closeDB() { if (db) { db.close(); db = null } }
 
-export function ensurePage(pageId, pageNumber = 1) {
-  const existing = db.prepare('SELECT id FROM pages WHERE id = ?').get(pageId)
-  if (!existing) {
-    db.prepare('INSERT INTO pages (id, page_number) VALUES (?, ?)').run(pageId, pageNumber)
+/* ── 页面 ── */
+function ensurePage(pageId, num = 1) {
+  const r = db.exec('SELECT id FROM pages WHERE id = ?', [pageId])
+  if (!r.length || !r[0].values.length) {
+    db.run('INSERT INTO pages (id, page_number, created_at, updated_at) VALUES (?, ?, ?, ?)', [pageId, num, Date.now(), Date.now()])
+    save()
   }
 }
 
 /* ── Stroke ── */
-
 export function saveStroke(id, pageId, userId, color, width, points) {
   ensurePage(pageId)
-  db.prepare(
-    'INSERT OR REPLACE INTO strokes (id, page_id, user_id, color, width, points, ts) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run(id, pageId, userId, color, width, JSON.stringify(points), Date.now())
+  db.run('INSERT OR REPLACE INTO strokes VALUES (?,?,?,?,?,?,?)', [id, pageId, userId, color, width, JSON.stringify(points), Date.now()])
+  save()
 }
 
 export function getStrokes(pageId) {
-  return db.prepare('SELECT * FROM strokes WHERE page_id = ? ORDER BY ts').all(pageId).map(r => ({
-    ...r,
-    points: JSON.parse(r.points),
-  }))
+  const r = db.exec('SELECT * FROM strokes WHERE page_id = ? ORDER BY ts', [pageId])
+  if (!r.length) return []
+  return r[0].values.map((row) => ({ id: row[0], page_id: row[1], user_id: row[2], color: row[3], width: row[4], points: JSON.parse(row[5]), ts: row[6] }))
 }
 
-export function deleteStroke(id) {
-  db.prepare('DELETE FROM strokes WHERE id = ?').run(id)
-}
+export function deleteStroke(id) { db.run('DELETE FROM strokes WHERE id = ?', [id]); save() }
 
 export function deleteStrokes(ids) {
   if (!ids.length) return
-  const placeholders = ids.map(() => '?').join(',')
-  db.prepare(`DELETE FROM strokes WHERE id IN (${placeholders})`).run(...ids)
+  db.run(`DELETE FROM strokes WHERE id IN (${ids.map(() => '?').join(',')})`, ids)
+  save()
 }
 
 /* ── Text ── */
-
 export function saveText(id, pageId, userId, content, x = 0, y = 0) {
   ensurePage(pageId)
-  db.prepare(
-    'INSERT OR REPLACE INTO text_blocks (id, page_id, user_id, content, pos_x, pos_y, ts) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run(id, pageId, userId, content, x, y, Date.now())
+  db.run('INSERT OR REPLACE INTO text_blocks VALUES (?,?,?,?,?,?,?)', [id, pageId, userId, content, x, y, Date.now()])
+  save()
 }
 
 export function getTextBlocks(pageId) {
-  return db.prepare('SELECT * FROM text_blocks WHERE page_id = ? ORDER BY ts').all(pageId)
+  const r = db.exec('SELECT * FROM text_blocks WHERE page_id = ? ORDER BY ts', [pageId])
+  if (!r.length) return []
+  return r[0].values.map((row) => ({ id: row[0], page_id: row[1], user_id: row[2], content: row[3], pos_x: row[4], pos_y: row[5], ts: row[6] }))
 }
 
 /* ── Image ── */
-
 export function saveImage(id, pageId, userId, url, x = 0, y = 0, w = 0, h = 0) {
   ensurePage(pageId)
-  db.prepare(
-    'INSERT OR REPLACE INTO images (id, page_id, user_id, url, pos_x, pos_y, width, height, ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(id, pageId, userId, url, x, y, w, h, Date.now())
+  db.run('INSERT OR REPLACE INTO images VALUES (?,?,?,?,?,?,?,?,?)', [id, pageId, userId, url, x, y, w, h, Date.now()])
+  save()
 }
 
 export function getImages(pageId) {
-  return db.prepare('SELECT * FROM images WHERE page_id = ? ORDER BY ts').all(pageId)
+  const r = db.exec('SELECT * FROM images WHERE page_id = ? ORDER BY ts', [pageId])
+  if (!r.length) return []
+  return r[0].values.map((row) => ({ id: row[0], page_id: row[1], user_id: row[2], url: row[3], pos_x: row[4], pos_y: row[5], width: row[6], height: row[7], ts: row[8] }))
 }
