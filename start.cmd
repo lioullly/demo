@@ -12,11 +12,10 @@ echo ================================
 echo.
 call npm install --silent
 echo.
-echo Local:  http://localhost:3000?room=%ROOM%
-echo Public: starting ngrok...
+echo Local: http://localhost:3000?room=%ROOM%
 echo.
-
-start "ngrok" npx ngrok http 3000 --log=stdout
-timeout /t 3 >nul
+echo For public access, open a NEW terminal and run:
+echo   npx localtunnel --port 3000
+echo.
 ROOM=%ROOM% node server.js
 pause
