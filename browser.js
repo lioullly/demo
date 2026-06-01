@@ -120,8 +120,8 @@ function done(host) {
   roomBadge.textContent = `Room: ${room}`
 
   const doShare = () => {
-    const host = connectedHost || host || location.hostname
-    const text = `${host}:${WS_PORT}\n房间号: ${room}`
+    const h = connectedHost || host || location.hostname
+    const text = `http://${h}:${WS_PORT}?room=${room}`
     const ta = document.createElement('textarea')
     ta.value = text; ta.style.position = 'fixed'; ta.style.left = '-9999px'
     document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, 99999)
