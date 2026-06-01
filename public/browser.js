@@ -377,17 +377,68 @@ function sendText() {
 
 function sendWS(msg) { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg)) }
 
-/* ── IndexedDB ── */
-function idb() { return new Promise((ok,no)=>{const r=indexedDB.open('handwriting_sync',2);r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains('strokes'))r.result.createObjectStore('strokes',{keyPath:'id'})};r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)}) }
+/* ── IndexedDB (singleton) ── */
+let _idb = null, _idbPromise = null
+function idb() {
+  if (_idb) return Promise.resolve(_idb)
+  if (!_idbPromise) {
+    _idbPromise = new Promise((ok,no)=>{
+      const r=indexedDB.open('handwriting_sync',3)
+      r.onupgradeneeded=()=>{
+        const d=r.result
+        if(!d.objectStoreNames.contains('strokes'))d.createObjectStore('strokes',{keyPath:'id'})
+        if(!d.objectStoreNames.contains('texts'))d.createObjectStore('texts',{keyPath:'id'})
+      }
+      r.onsuccess=()=>{_idb=r.result;ok(_idb)}
+      r.onerror=()=>no(r.error)
+    })
+  }
+  return _idbPromise
+}
 async function saveStroke(id, pts, c, s) { try { const d=await idb();d.transaction('strokes','readwrite').objectStore('strokes').put({id,pageId:PAGE_ID,userId:USER_ID,points:pts,color:c,size:s,ts:Date.now()}) } catch(_) {} }
 async function deleteStroke(id) { try { const d=await idb();d.transaction('strokes','readwrite').objectStore('strokes').delete(id) } catch(_) {} }
-;(async function load() {
-  try {
-    const d = await idb()
-    const req = d.transaction('strokes','readonly').objectStore('strokes').getAll()
-    req.onsuccess = () => req.result.sort((a,b)=>a.ts-b.ts).forEach((s)=>{strokes.mine.set(s.id,s);cv.mine.ctxBg&&draw(cv.mine.ctxBg,s.points,s.color,s.size)})
-  } catch(_) {}
-})()
+async function saveTextBlock(id, content, x, y) { try { const d=await idb();d.transaction('texts','readwrite').objectStore('texts').put({id,pageId:PAGE_ID,userId:USER_ID,content,x,y,ts:Date.now()}) } catch(_) {} }
+
+// Load saved strokes on startup
+idb().then((d) => {
+  const req = d.transaction('strokes','readonly').objectStore('strokes').getAll()
+  req.onsuccess = () => req.result.sort((a,b)=>a.ts-b.ts).forEach((s)=>{strokes.mine.set(s.id,s);if(cv.mine.ctxBg)draw(cv.mine.ctxBg,s.points,s.color,s.size)})
+}).catch(()=>{})
+
+/* ── connectWS race fix ── */
+let _connectId = 0
+function connectWS(host) {
+  const cid = ++_connectId
+  return new Promise((resolve) => {
+    if (ws) { try { ws.close() } catch(_) {}; ws = null }
+    if (!room) { resolve(false); return }
+    const url = `ws://${host}:${WS_PORT}?room=${encodeURIComponent(room)}`
+    lobbyMsg.textContent = 'Connecting...'
+    ws = new WebSocket(url)
+    let settled = false
+    ws.onopen = () => {
+      if (settled || cid !== _connectId) return
+      settled = true; connectedHost = host; resolve(true)
+      lobbyMsg.textContent = 'Connected'
+      if (statusDot) { statusDot.textContent = 'Connected'; statusDot.className = 'status-ok'; const rb=$('btn-reconnect');if(rb)rb.style.display='none' }
+    }
+    ws.onerror = () => {
+      if (settled) return
+      settled = true; ws = null; resolve(false)
+      lobbyMsg.textContent = 'Connection failed'
+      if (statusDot) { statusDot.textContent = 'Disconnected'; statusDot.className = 'status-wait'; const rb=$('btn-reconnect');if(rb)rb.style.display='' }
+    }
+    ws.onclose = () => {
+      if (settled) return
+      ws = null
+      if (statusDot) { statusDot.textContent = 'Disconnected'; statusDot.className = 'status-wait'; const rb=$('btn-reconnect');if(rb)rb.style.display='' }
+    }
+    ws.onmessage = handleWS
+    setTimeout(() => {
+      if (!settled && cid === _connectId) { settled = true; ws = null; resolve(false); lobbyMsg.textContent = 'Timed out' }
+    }, 5000)
+  })
+}
 
 // URL 直连
 const urlRoom = new URLSearchParams(location.search).get('room')
