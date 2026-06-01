@@ -180,12 +180,24 @@ function setupCanvas() {
         const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*'
         inp.onchange = () => {
           if (!inp.files[0]) return
+          const file = inp.files[0]
+          if (file.size > 10 * 1024 * 1024) { alert('Image too large (>10MB). Please use a smaller image.'); return }
           const reader = new FileReader()
           reader.onload = () => {
             const img = new Image(); img.src = reader.result
-            img.onload = () => addBlock(type, { src: reader.result, alt: inp.files[0].name, width: img.width, height: img.height })
+            img.onload = () => {
+              // Compress: max 800px, JPEG quality 0.6
+              const MAX_W = 800
+              let w = img.width, h = img.height
+              if (w > MAX_W) { h = Math.round(h * MAX_W / w); w = MAX_W }
+              const c = document.createElement('canvas'); c.width = w; c.height = h
+              const ctx = c.getContext('2d')
+              ctx.drawImage(img, 0, 0, w, h)
+              const compressed = c.toDataURL('image/jpeg', 0.6)
+              addBlock(type, { src: compressed, alt: file.name, width: w, height: h })
+            }
           }
-          reader.readAsDataURL(inp.files[0])
+          reader.readAsDataURL(file)
         }
         inp.click()
       } else {
