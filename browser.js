@@ -163,7 +163,9 @@ function setupCanvas() {
 
   const bp = $('btn-pen'), be = $('btn-eraser'), cp = $('color-picker'), ss = $('size-slider')
   if (bp) bp.onclick = () => { tool='pen'; bp.className='on'; if(be)be.className='';cv.mine.fg.className='cross' }
-  if (be) be.onclick = () => { tool='eraser'; be.className='on'; if(bp)bp.className='';cv.mine.fg.className='' }
+  const em = $('eraser-mode')
+  if (be) be.onclick = () => { tool='eraser'; be.className='on'; if(bp)bp.className='';cv.mine.fg.className='';if(em)em.style.display='inline' }
+  if (bp) bp.onclick = () => { tool='pen'; bp.className='on'; if(be)be.className='';cv.mine.fg.className='cross';if(em)em.style.display='none' }
   if (cp) cp.oninput = (e) => { color = e.target.value }
   if (ss) ss.oninput = (e) => { size = +e.target.value }
 
@@ -376,9 +378,21 @@ function draw(ctx, pts, c, s) {
 
 function eraseLocal(board, p) {
   const store = board === 'mine' ? getStrokes() : strokes.peer
-  const ctx = cv[board].ctxBg
+  const mode = ($('eraser-mode')?.value) || 'point'
   const hit = []
-  store.forEach((s, id) => { if (s.points.some((q) => (q.x-p.x)**2 + (q.y-p.y)**2 < 144)) hit.push(id) })
+
+  if (mode === 'stroke') {
+    // Stroke erase: remove the first stroke that contains this point
+    for (const [id, s] of store) {
+      if (s.points.some((q) => (q.x-p.x)**2 + (q.y-p.y)**2 < 144)) {
+        hit.push(id); break // Only erase one stroke per touch
+      }
+    }
+  } else {
+    // Point erase: remove all strokes touched by the eraser radius
+    store.forEach((s, id) => { if (s.points.some((q) => (q.x-p.x)**2 + (q.y-p.y)**2 < 144)) hit.push(id) })
+  }
+
   if (hit.length) {
     hit.forEach((id) => { store.delete(id); if (board==='mine') deleteStroke(id) })
     sendWS({ type:'erase', payload:{ strokeIds:hit }, pageId:getPageId(), userId:USER_ID, userName, id:uid(), ts:Date.now(), source:USER_ID })
