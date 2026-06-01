@@ -13,18 +13,39 @@ import { WebSocketServer } from 'ws'
 const WS_PORT = process.env.PORT || 3000
 
 /* ── WebSocket ── */
-const rooms = new Map() // roomCode -> { peers: Set<ws>, history: string[] }
+const MAX_ROOMS = 10
+const ROOM_TTL = 10 * 60 * 1000
+const rooms = new Map()
+
+function destroyRoom(room, r) {
+  clearTimeout(r.timer)
+  rooms.delete(room)
+  console.log(`  - 房间 ${room}  已销毁 (超时)`)
+}
 
 const wss = new WebSocketServer({ noServer: true })
 wss.on('connection', (ws, req) => {
   const url = new URL(req.url, 'http://localhost')
   const room = (url.searchParams.get('room') || 'default').toUpperCase()
-  if (!rooms.has(room)) rooms.set(room, { peers: new Set(), history: [] })
-  const r = rooms.get(room)
+
+  if (!rooms.has(room) && rooms.size >= MAX_ROOMS) {
+    ws.close(4002, '房间已满')
+    return
+  }
+
+  let r = rooms.get(room)
+  if (!r) {
+    r = { peers: new Set(), history: [], timer: null, createdAt: Date.now() }
+    rooms.set(room, r)
+    console.log(`  + 房间 ${room}  已创建  [${rooms.size}/${MAX_ROOMS}]`)
+  } else {
+    clearTimeout(r.timer)
+    r.timer = null
+  }
+
   r.peers.add(ws)
   console.log(`  + 房间 ${room}  客户端加入  (${r.peers.size} 人)`)
 
-  // 发送历史笔画给新客户端
   if (r.history.length > 0) {
     ws.send(JSON.stringify({ type: 'sync', history: r.history }))
   }
@@ -32,15 +53,14 @@ wss.on('connection', (ws, req) => {
   ws.on('message', (data) => {
     const msg = data.toString()
     r.history.push(msg)
-    // 限制历史长度防止内存泄漏
     if (r.history.length > 10000) r.history = r.history.slice(-5000)
     r.peers.forEach((c) => { if (c !== ws && c.readyState === 1) c.send(msg) })
   })
   ws.on('close', () => {
     r.peers.delete(ws)
     if (r.peers.size === 0) {
-      rooms.delete(room)
-      console.log(`  - 房间 ${room}  已关闭`)
+      r.timer = setTimeout(() => destroyRoom(room, r), ROOM_TTL)
+      console.log(`  - 房间 ${room}  空闲，10分钟后销毁`)
     } else {
       console.log(`  - 房间 ${room}  客户端离开  (${r.peers.size} 人)`)
     }
@@ -58,7 +78,7 @@ const http = createServer((req, res) => {
   }
   if (req.url === '/api/status') {
     const list = []
-    rooms.forEach((peers, code) => list.push({ room: code, clients: peers.size }))
+    rooms.forEach((r, code) => list.push({ room: code, clients: r.peers.size, createdAt: r.createdAt }))
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
     res.end(JSON.stringify({ name: 'handwriting-sync', rooms: list, port: WS_PORT }))
     return
