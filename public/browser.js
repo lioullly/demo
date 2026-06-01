@@ -314,6 +314,7 @@ function setupPointer(board) {
     if (e.pointerType === 'touch' && e.pressure === 0) return
     if (board === 'peer') return
     e.preventDefault(); isDrawing = true; points = [pt(e, board)]
+    try { fg.setPointerCapture(e.pointerId) } catch (_) {}
     if (tool === 'pen') ctxFg.clearRect(0, 0, fg.width, fg.height)
   }
   fg.onpointermove = (e) => {

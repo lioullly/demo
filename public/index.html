@@ -12,7 +12,7 @@
   --success:#22c55e; --danger:#ef4444;
 }
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);overflow:hidden;height:100dvh;touch-action:none;user-select:none;-webkit-user-select:none}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);overflow:hidden;height:100dvh}
 #app{display:flex;flex-direction:column;height:100dvh}
 
 /* ── 大厅 ── */
@@ -58,7 +58,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .dot-mine{background:var(--accent)}
 .dot-peer{background:var(--success)}
 .canvas-wrap{flex:1;position:relative;overflow:hidden}
-canvas{position:absolute;top:0;left:0}
+canvas{position:absolute;top:0;left:0;touch-action:none;user-select:none;-webkit-user-select:none}
 canvas.cross{cursor:crosshair}
 
 #text-overlay{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:14px;box-shadow:0 4px 24px rgba(0,0,0,.1);z-index:100;width:280px}

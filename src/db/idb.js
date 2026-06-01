@@ -54,7 +54,8 @@ export function deleteStroke(id) {
 }
 
 export function deleteStrokes(ids) {
-  if (!db || !ids.length) return Promise.resolve()
+  if (!db) return Promise.reject(new Error('DB not open'))
+  if (!Array.isArray(ids) || !ids.length) return Promise.resolve()
   return new Promise((resolve, reject) => {
     const tx = db.transaction('strokes', 'readwrite')
     const s = tx.objectStore('strokes')
