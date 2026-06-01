@@ -13,27 +13,36 @@ import { WebSocketServer } from 'ws'
 const WS_PORT = process.env.PORT || 3000
 
 /* ── WebSocket ── */
-const rooms = new Map()
+const rooms = new Map() // roomCode -> { peers: Set<ws>, history: string[] }
 
 const wss = new WebSocketServer({ noServer: true })
 wss.on('connection', (ws, req) => {
   const url = new URL(req.url, 'http://localhost')
   const room = (url.searchParams.get('room') || 'default').toUpperCase()
-  if (!rooms.has(room)) rooms.set(room, new Set())
-  const peers = rooms.get(room)
-  peers.add(ws)
-  console.log(`  + 房间 ${room}  客户端加入  (${peers.size} 人)`)
+  if (!rooms.has(room)) rooms.set(room, { peers: new Set(), history: [] })
+  const r = rooms.get(room)
+  r.peers.add(ws)
+  console.log(`  + 房间 ${room}  客户端加入  (${r.peers.size} 人)`)
+
+  // 发送历史笔画给新客户端
+  if (r.history.length > 0) {
+    ws.send(JSON.stringify({ type: 'sync', history: r.history }))
+  }
+
   ws.on('message', (data) => {
     const msg = data.toString()
-    peers.forEach((c) => { if (c !== ws && c.readyState === 1) c.send(msg) })
+    r.history.push(msg)
+    // 限制历史长度防止内存泄漏
+    if (r.history.length > 10000) r.history = r.history.slice(-5000)
+    r.peers.forEach((c) => { if (c !== ws && c.readyState === 1) c.send(msg) })
   })
   ws.on('close', () => {
-    peers.delete(ws)
-    if (peers.size === 0) {
+    r.peers.delete(ws)
+    if (r.peers.size === 0) {
       rooms.delete(room)
       console.log(`  - 房间 ${room}  已关闭`)
     } else {
-      console.log(`  - 房间 ${room}  客户端离开  (${peers.size} 人)`)
+      console.log(`  - 房间 ${room}  客户端离开  (${r.peers.size} 人)`)
     }
   })
 })

@@ -115,22 +115,28 @@ btnEnter.onclick = async () => {
 }
 
 function done(host) {
+  const shareHost = connectedHost || host || location.hostname
   lobby.style.display = 'none'
   canvasView.classList.add('show')
   roomBadge.textContent = `Room: ${room}`
+  const shareURL = `${location.origin}${location.pathname}?room=${encodeURIComponent(room)}&host=${encodeURIComponent(shareHost)}`
 
-  const getShareURL = () => {
-    const h = connectedHost || host || location.hostname
-    return `${location.origin}${location.pathname}?room=${encodeURIComponent(room)}&host=${encodeURIComponent(h)}`
-  }
   const doShare = () => {
-    const url = getShareURL()
-    navigator.clipboard?.writeText(url).catch(()=>{})
-    roomBadge.textContent = 'Copied! URL: ' + url.split('?')[1]
-    setTimeout(() => { roomBadge.textContent = `Room: ${room}` }, 2000)
+    navigator.clipboard?.writeText(shareURL).catch(()=>{
+      const ta = document.createElement('textarea')
+      ta.value = shareURL; ta.style.position = 'fixed'; ta.style.left = '-9999px'
+      document.body.appendChild(ta); ta.select()
+      document.execCommand('copy'); document.body.removeChild(ta)
+    })
+    const btn = $('btn-share')
+    if (btn) { btn.textContent = '已复制'; btn.style.background = '#22c55e'; btn.style.color = '#fff' }
+    setTimeout(() => {
+      if (btn) { btn.textContent = '分享'; btn.style.background = '#fff'; btn.style.color = '' }
+    }, 1500)
   }
   roomBadge.onclick = doShare
-  $('btn-share').onclick = doShare
+  const shareBtn = $('btn-share')
+  if (shareBtn) shareBtn.onclick = doShare
   setupCanvas()
 }
 
@@ -190,6 +196,25 @@ function handleWS(e) {
   try {
     const msg = JSON.parse(e.data)
     if (msg.source === USER_ID) return
+    if (msg.type === 'sync') {
+      // 服务器发来的历史笔画，批量回放
+      for (const raw of msg.history) {
+        try {
+          const m = JSON.parse(raw)
+          if (m.type === 'stroke') {
+            strokes.peer.set(m.id, m.payload)
+            draw(cv.peer.ctxBg, m.payload.points, m.payload.color, m.payload.width || m.payload.size)
+          } else if (m.type === 'erase') {
+            m.payload.strokeIds.forEach((id) => strokes.peer.delete(id))
+          } else if (m.type === 'text') {
+            const ctx = cv.peer.ctxBg
+            ctx.save(); ctx.font = '16px system-ui'; ctx.fillStyle = '#1a1a1a'; ctx.fillText(m.payload.content, m.payload.x, m.payload.y); ctx.restore()
+          }
+        } catch (_) {}
+      }
+      redrawBoard('peer')
+      return
+    }
     if (msg.type === 'stroke') {
       strokes.peer.set(msg.id, msg.payload)
       draw(cv.peer.ctxBg, msg.payload.points, msg.payload.color, msg.payload.width || msg.payload.size)
@@ -216,8 +241,16 @@ function resize() {
       c.style.width = w + 'px'; c.style.height = h + 'px'
       c.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0)
     }
+    redrawBoard(k)
   }
 }
+
+// 旋转防抖
+let resizeTimer = 0
+window.addEventListener('orientationchange', () => {
+  clearTimeout(resizeTimer)
+  resizeTimer = setTimeout(resize, 300)
+})
 
 function pt(e, board) {
   const r = cv[board].fg.getBoundingClientRect()
