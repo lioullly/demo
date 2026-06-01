@@ -164,6 +164,7 @@ function setupCanvas() {
   $('size-slider').oninput = (e) => { size = +e.target.value }
   $('btn-view-both').onclick = () => { $('panel-peer').style.display='';resize();$('btn-view-both').className='on';$('btn-view-mine').className='' }
   $('btn-view-mine').onclick = () => { $('panel-peer').style.display='none';resize();$('btn-view-mine').className='on';$('btn-view-both').className='' }
+  $('btn-export').onclick = exportNotes
   $('text-send').onclick = sendText
   $('text-cancel').onclick = () => { $('text-input').value=''; $('text-overlay').classList.remove('show') }
 
@@ -342,4 +343,74 @@ if (urlRoom) {
   const h = urlHost || location.hostname
   hostInput.value = h
   connectWS(h).then((ok) => { if (ok) done(h); else done(h) })
+}
+
+/* ── 导出 ── */
+function exportNotes() {
+  const btn = $('btn-export')
+  if (!btn) return
+  btn.textContent = '...'; btn.disabled = true
+
+  const fmt = confirm('导出格式:\n确定=PNG (图片)\n取消=SVG (矢量)')
+  const ts = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')
+  const boards = ['mine', 'peer']
+  const names = ['我的笔记', '朋友的笔记']
+
+  boards.forEach((k, idx) => {
+    const canvas = document.createElement('canvas')
+    const dpr = devicePixelRatio || 1
+    const size = 2400 // export resolution width
+    canvas.width = size
+    canvas.height = size * 1.4
+    const ctx = canvas.getContext('2d')
+    ctx.scale(dpr, dpr)
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, canvas.width / dpr, canvas.height / dpr)
+
+    // 重绘大分辨率
+    strokes[k].forEach((s) => {
+      ctx.save()
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round'
+      const scale = size / (cv[k].bg.width / (window.devicePixelRatio || 1))
+      ctx.strokeStyle = s.color
+      ctx.lineWidth = s.size * scale / (dpr || 1)
+      ctx.globalAlpha = 0.95
+      ctx.beginPath()
+      if (s.points.length > 0) {
+        ctx.moveTo(s.points[0].x * scale / (dpr || 1), s.points[0].y * scale / (dpr || 1))
+        for (let i = 1; i < s.points.length; i++) {
+          ctx.lineTo(s.points[i].x * scale / (dpr || 1), s.points[i].y * scale / (dpr || 1))
+        }
+      }
+      ctx.stroke(); ctx.restore()
+    })
+
+    if (fmt) {
+      // PNG
+      canvas.toBlob((blob) => {
+        const a = document.createElement('a')
+        a.download = `${names[idx]}_${ts}.png`
+        a.href = URL.createObjectURL(blob)
+        a.click()
+        URL.revokeObjectURL(a.href)
+      })
+    } else {
+      // SVG - simple path export
+      let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${canvas.width} ${canvas.height}">`
+      svg += `<rect width="${canvas.width}" height="${canvas.height}" fill="white"/>`
+      strokes[k].forEach((s) => {
+        const d = s.points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x} ${p.y}`).join(' ')
+        svg += `<path d="${d}" stroke="${s.color}" stroke-width="${s.size}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>`
+      })
+      svg += '</svg>'
+      const blob = new Blob([svg], { type: 'image/svg+xml' })
+      const a = document.createElement('a')
+      a.download = `${names[idx]}_${ts}.svg`
+      a.href = URL.createObjectURL(blob)
+      a.click()
+      URL.revokeObjectURL(a.href)
+    }
+  })
+
+  btn.textContent = '导出'; btn.disabled = false
 }
