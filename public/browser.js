@@ -556,12 +556,29 @@ function exportNotes() {
 }
 
 /* ── 块操作 ── */
+function sendBlockUpdate(id, text, checked) {
+  sendWS({ type:'block_update', blockId:id, payload:{ text, checked }, pageId:getPageId(), userId:USER_ID, id:uid(), ts:Date.now(), source:USER_ID })
+}
+
 function makeBlock(id, type, payload, readOnly) {
   const div = document.createElement('div')
   div.className = 'block-item'; div.dataset.blockId = id; div.dataset.blockType = type
-  div.style.padding = '6px 10px'; div.style.margin = '3px 0'; div.style.background = '#fff'
-  div.style.borderRadius = '6px'; div.style.boxShadow = '0 1px 3px rgba(0,0,0,0.06)'
-  div.style.display = 'flex'; div.style.alignItems = 'flex-start'; div.style.gap = '6px'
+  div.style.cssText = 'padding:6px 10px;margin:3px 0;background:#fff;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,0.06);display:flex;align-items:flex-start;gap:6px;position:relative;pointer-events:auto;touch-action:manipulation'
+
+  // Drag handle for repositioning
+  if (!readOnly) {
+    const grip = document.createElement('span')
+    grip.textContent = '≡'; grip.style.cssText = 'cursor:grab;color:#ccc;font-size:16px;line-height:1;user-select:none;padding:2px 0;touch-action:none'
+    grip.onpointerdown = (e) => {
+      e.stopPropagation(); e.preventDefault()
+      const startY = e.clientY; const startTop = div.offsetTop
+      const move = (ev) => { div.style.position = 'relative'; div.style.top = (startTop + ev.clientY - startY) + 'px' }
+      const up = () => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up) }
+      document.addEventListener('pointermove', move)
+      document.addEventListener('pointerup', up)
+    }
+    div.appendChild(grip)
+  }
 
   if (type === 'img') {
     const img = document.createElement('img')
@@ -569,59 +586,44 @@ function makeBlock(id, type, payload, readOnly) {
     div.appendChild(img)
     if (!readOnly) {
       const del = document.createElement('button'); del.textContent = 'x'
-      del.style.cssText = 'position:absolute;top:2px;right:2px;background:red;color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:10px;cursor:pointer'
-      del.onclick = () => { div.remove(); sendWS({ type:'block_delete', blockId:id, pageId:getPageId(), userId:USER_ID, id:uid(), ts:Date.now(), source:USER_ID }) }
-      div.style.position = 'relative'; div.appendChild(del)
+      del.style.cssText = 'position:absolute;top:2px;right:2px;background:#ef4444;color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:11px;cursor:pointer;z-index:1'
+      del.onclick = (e) => { e.stopPropagation(); div.remove(); sendWS({ type:'block_delete', blockId:id, pageId:getPageId(), userId:USER_ID, id:uid(), ts:Date.now(), source:USER_ID }) }
+      div.appendChild(del)
     }
     return div
   }
 
   if (type === 'todo') {
     const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = payload.checked || false
-    if (!readOnly) cb.onchange = () => sendWS({ type:'block_update', blockId:id, payload:{ checked:cb.checked }, pageId:getPageId(), userId:USER_ID, id:uid(), ts:Date.now(), source:USER_ID })
+    cb.style.cssText = 'width:18px;height:18px;flex-shrink:0;margin-top:2px'
+    if (!readOnly) cb.onchange = () => sendBlockUpdate(id, null, cb.checked)
     div.appendChild(cb)
   }
 
   let input
+  const baseStyle = 'flex:1;border:none;outline:none;background:transparent;font-family:inherit;padding:2px 0;pointer-events:auto;min-height:24px'
   if (type === 'p') {
     input = document.createElement('textarea')
-    input.rows = 1; input.style.flex = '1'; input.style.border = 'none'; input.style.outline = 'none'
-    input.style.fontSize = '14px'; input.style.resize = 'none'; input.style.background = 'transparent'
-    input.style.fontFamily = 'inherit'; input.style.padding = '2px 0'
-    input.placeholder = 'Type here...'
-    input.value = payload.text || ''
-    input.oninput = () => { input.style.height = 'auto'; input.style.height = input.scrollHeight + 'px' }
-  } else if (type.startsWith('h')) {
-    const lvl = parseInt(type[1]) || 1
-    input = document.createElement('input')
-    input.type = 'text'; input.style.flex = '1'; input.style.border = 'none'; input.style.outline = 'none'
-    input.style.fontWeight = 'bold'; input.style.fontSize = (28 - lvl * 4) + 'px'
-    input.style.background = 'transparent'; input.style.fontFamily = 'inherit'; input.style.padding = '2px 0'
-    input.placeholder = 'Heading ' + lvl
-    input.value = payload.text || ''
-  } else if (type === 'todo') {
-    input = document.createElement('input')
-    input.type = 'text'; input.style.flex = '1'; input.style.border = 'none'; input.style.outline = 'none'
-    input.style.fontSize = '14px'; input.style.background = 'transparent'
-    input.style.fontFamily = 'inherit'; input.style.padding = '2px 0'
-    input.value = payload.text || ''
+    input.setAttribute('inputmode', 'text'); input.rows = 1
+    input.style.cssText = baseStyle + ';font-size:14px;resize:none;overflow:hidden'
+    input.placeholder = 'Type here...'; input.value = payload.text || ''
+    input.oninput = () => { input.style.height = 'auto'; input.style.height = Math.max(24, input.scrollHeight) + 'px' }
+    setTimeout(() => { input.style.height = 'auto'; input.style.height = Math.max(24, input.scrollHeight) + 'px' }, 0)
   } else {
     input = document.createElement('input')
-    input.type = 'text'; input.style.flex = '1'; input.style.border = 'none'; input.style.outline = 'none'
-    input.style.fontSize = '14px'; input.style.background = 'transparent'
-    input.style.fontFamily = 'inherit'; input.style.padding = '2px 0'
+    input.type = 'text'; input.setAttribute('inputmode', 'text')
+    input.style.cssText = baseStyle + ';font-size:' + (type.startsWith('h') ? (28 - (parseInt(type[1]) || 1) * 4) : 14) + 'px'
+    if (type.startsWith('h')) { input.style.fontWeight = 'bold'; input.placeholder = 'Heading ' + (parseInt(type[1]) || 1) }
+    else { input.placeholder = 'Type...' }
     input.value = payload.text || ''
   }
   if (input) {
     input.readOnly = !!readOnly
+    input.style.pointerEvents = 'auto'
     if (!readOnly) {
-      let debounceTimer
-      input.oninput = () => {
-        clearTimeout(debounceTimer)
-        debounceTimer = setTimeout(() => {
-          sendWS({ type:'block_update', blockId:id, payload:{ text:input.value, checked: type==='todo' ? div.querySelector('input[type=checkbox]')?.checked : undefined }, pageId:getPageId(), userId:USER_ID, id:uid(), ts:Date.now(), source:USER_ID })
-        }, 300)
-      }
+      let debounce
+      input.oninput = () => { clearTimeout(debounce); debounce = setTimeout(() => { sendBlockUpdate(id, input.value, type==='todo' ? div.querySelector('input[type=checkbox]')?.checked : undefined) }, 300) }
+      input.onblur = () => { clearTimeout(debounce); sendBlockUpdate(id, input.value, type==='todo' ? div.querySelector('input[type=checkbox]')?.checked : undefined) }
     }
     div.appendChild(input)
   }
