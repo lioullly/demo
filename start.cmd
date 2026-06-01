@@ -17,5 +17,5 @@ echo.
 echo For public access, open a NEW terminal and run:
 echo   npx localtunnel --port 3000
 echo.
-ROOM=%ROOM% node server.js
+node server.js
 pause
