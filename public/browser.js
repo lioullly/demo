@@ -495,7 +495,7 @@ function exportNotes() {
     canvas.height = size * 1.4
     const ctx = canvas.getContext('2d')
     ctx.scale(dpr, dpr)
-    ctx.fillStyle = '#ffffff'
+    ctx.fillStyle = '#faf8f0'
     ctx.fillRect(0, 0, canvas.width / dpr, canvas.height / dpr)
 
     // 重绘大分辨率
@@ -530,7 +530,7 @@ function exportNotes() {
       const exportScale = size / (cv[k].bg.width / (window.devicePixelRatio || 1))
       const svgSize = size * 1.4
       let svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+svgSize+' '+svgSize+'" width="'+svgSize+'" height="'+svgSize+'">'
-      svg += '<rect width="'+svgSize+'" height="'+svgSize+'" fill="white"/>'
+      svg += '<rect width="'+svgSize+'" height="'+svgSize+'" fill="#faf8f0"/>'
       strokes[k].forEach((s) => {
         const pts = s.points.map((p) => `${p.x*exportScale/(dpr||1)},${p.y*exportScale/(dpr||1)}`).join(' ')
         svg += '<path d="M'+pts+'" stroke="'+escHtml(s.color)+'" stroke-width="'+(s.size*exportScale/(dpr||1))+
@@ -550,43 +550,110 @@ function exportNotes() {
 }
 
 /* ── 块操作 ── */
-function addBlock(type, payload) {
-  const id = uid()
-  const msg = { id, type, payload, pageId: getPageId(), userId: USER_ID, userName, ts: Date.now(), source: USER_ID }
-  sendWS(msg)
-  // 本地渲染
-  const wrap = document.getElementById('wrap-mine')
-  if (!wrap) return
+function makeBlock(id, type, payload, readOnly) {
+  const div = document.createElement('div')
+  div.className = 'block-item'; div.dataset.blockId = id; div.dataset.blockType = type
+  div.style.padding = '6px 10px'; div.style.margin = '3px 0'; div.style.background = '#fff'
+  div.style.borderRadius = '6px'; div.style.boxShadow = '0 1px 3px rgba(0,0,0,0.06)'
+  div.style.display = 'flex'; div.style.alignItems = 'flex-start'; div.style.gap = '6px'
+
   if (type === 'img') {
     const img = document.createElement('img')
     img.src = payload.src; img.style.maxWidth = '100%'; img.style.maxHeight = '300px'; img.style.borderRadius = '6px'
-    wrap.appendChild(img)
-  } else {
-    const div = document.createElement('div')
-    div.style.padding = '8px 12px'; div.style.margin = '4px 0'; div.style.background = '#fff'; div.style.borderRadius = '6px'; div.style.boxShadow = '0 1px 3px rgba(0,0,0,0.06)'
-    if (type.startsWith('h')) { const lvl = payload.level || 1; div.innerHTML = '<strong style="font-size:'+(28-lvl*4)+'px">'+escHtml(payload.text||'heading '+lvl)+'</strong>' }
-    else if (type === 'todo') { div.innerHTML = '<input type="checkbox" '+(payload.checked?'checked':'')+'> '+escHtml(payload.text||'todo') }
-    else { div.textContent = payload.text || '(text)' }
-    wrap.insertBefore(div, wrap.firstChild)
+    div.appendChild(img)
+    if (!readOnly) {
+      const del = document.createElement('button'); del.textContent = 'x'
+      del.style.cssText = 'position:absolute;top:2px;right:2px;background:red;color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:10px;cursor:pointer'
+      del.onclick = () => { div.remove(); sendWS({ type:'block_delete', blockId:id, pageId:getPageId(), userId:USER_ID, id:uid(), ts:Date.now(), source:USER_ID }) }
+      div.style.position = 'relative'; div.appendChild(del)
+    }
+    return div
   }
+
+  if (type === 'todo') {
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = payload.checked || false
+    if (!readOnly) cb.onchange = () => sendWS({ type:'block_update', blockId:id, payload:{ checked:cb.checked }, pageId:getPageId(), userId:USER_ID, id:uid(), ts:Date.now(), source:USER_ID })
+    div.appendChild(cb)
+  }
+
+  let input
+  if (type === 'p') {
+    input = document.createElement('textarea')
+    input.rows = 1; input.style.flex = '1'; input.style.border = 'none'; input.style.outline = 'none'
+    input.style.fontSize = '14px'; input.style.resize = 'none'; input.style.background = 'transparent'
+    input.style.fontFamily = 'inherit'; input.style.padding = '2px 0'
+    input.placeholder = 'Type here...'
+    input.value = payload.text || ''
+    input.oninput = () => { input.style.height = 'auto'; input.style.height = input.scrollHeight + 'px' }
+  } else if (type.startsWith('h')) {
+    const lvl = parseInt(type[1]) || 1
+    input = document.createElement('input')
+    input.type = 'text'; input.style.flex = '1'; input.style.border = 'none'; input.style.outline = 'none'
+    input.style.fontWeight = 'bold'; input.style.fontSize = (28 - lvl * 4) + 'px'
+    input.style.background = 'transparent'; input.style.fontFamily = 'inherit'; input.style.padding = '2px 0'
+    input.placeholder = 'Heading ' + lvl
+    input.value = payload.text || ''
+  } else if (type === 'todo') {
+    input = document.createElement('input')
+    input.type = 'text'; input.style.flex = '1'; input.style.border = 'none'; input.style.outline = 'none'
+    input.style.fontSize = '14px'; input.style.background = 'transparent'
+    input.style.fontFamily = 'inherit'; input.style.padding = '2px 0'
+    input.value = payload.text || ''
+  } else {
+    input = document.createElement('input')
+    input.type = 'text'; input.style.flex = '1'; input.style.border = 'none'; input.style.outline = 'none'
+    input.style.fontSize = '14px'; input.style.background = 'transparent'
+    input.style.fontFamily = 'inherit'; input.style.padding = '2px 0'
+    input.value = payload.text || ''
+  }
+  if (input) {
+    input.readOnly = !!readOnly
+    if (!readOnly) {
+      let debounceTimer
+      input.oninput = () => {
+        clearTimeout(debounceTimer)
+        debounceTimer = setTimeout(() => {
+          sendWS({ type:'block_update', blockId:id, payload:{ text:input.value, checked: type==='todo' ? div.querySelector('input[type=checkbox]')?.checked : undefined }, pageId:getPageId(), userId:USER_ID, id:uid(), ts:Date.now(), source:USER_ID })
+        }, 300)
+      }
+    }
+    div.appendChild(input)
+  }
+  return div
 }
 
-// Handle incoming block messages
+function addBlock(type, payload) {
+  const id = uid()
+  const msg = { id, type:'block_add', blockType:type, payload, pageId:getPageId(), userId:USER_ID, userName, ts:Date.now(), source:USER_ID }
+  sendWS(msg)
+  const wrap = document.getElementById('wrap-mine')
+  if (!wrap) return
+  const el = makeBlock(id, type, payload, false)
+  wrap.insertBefore(el, wrap.firstChild)
+}
+
 function handleBlockMsg(msg) {
-  if (msg.source === USER_ID) return
   const wrap = document.getElementById('wrap-peer')
   if (!wrap) return
-  if (msg.type === 'img') {
-    const img = document.createElement('img')
-    img.src = msg.payload.src; img.style.maxWidth = '100%'; img.style.maxHeight = '300px'; img.style.borderRadius = '6px'
-    wrap.insertBefore(img, wrap.firstChild)
-  } else if (msg.type === 'p' || msg.type === 'todo' || msg.type?.startsWith('h')) {
-    const div = document.createElement('div')
-    div.style.padding = '8px 12px'; div.style.margin = '4px 0'; div.style.background = '#fff'; div.style.borderRadius = '6px'; div.style.boxShadow = '0 1px 3px rgba(0,0,0,0.06)'
-    if (msg.type.startsWith('h')) { const lvl = msg.payload.level || 1; div.innerHTML = '<strong style="font-size:'+(28-lvl*4)+'px">'+escHtml(msg.payload.text||'h')+'</strong> - <small>'+escHtml(msg.userName||msg.userId)+'</small>' }
-    else if (msg.type === 'todo') { div.innerHTML = '<input type="checkbox" '+(msg.payload.checked?'checked':'')+' disabled> '+escHtml(msg.payload.text||'') }
-    else { div.textContent = (msg.payload.text||'') + ' - ' + (msg.userName||msg.userId) }
-    wrap.insertBefore(div, wrap.firstChild)
+  if (msg.type === 'block_add') {
+    if (msg.source === USER_ID) return
+    const el = makeBlock(msg.id, msg.blockType, msg.payload, true)
+    const label = document.createElement('small')
+    label.textContent = ' - ' + (msg.userName || msg.userId)
+    label.style.fontSize = '10px'; label.style.color = '#888'; label.style.alignSelf = 'center'
+    el.appendChild(label)
+    wrap.insertBefore(el, wrap.firstChild)
+  } else if (msg.type === 'block_update') {
+    const existing = wrap.querySelector('[data-block-id="'+msg.blockId+'"]')
+    if (existing) {
+      const input = existing.querySelector('input[type="text"],textarea')
+      if (input && msg.payload.text !== undefined) input.value = msg.payload.text
+      const cb = existing.querySelector('input[type="checkbox"]')
+      if (cb && msg.payload.checked !== undefined) cb.checked = msg.payload.checked
+    }
+  } else if (msg.type === 'block_delete') {
+    const el = wrap.querySelector('[data-block-id="'+msg.blockId+'"]')
+    if (el) el.remove()
   }
 }
 
