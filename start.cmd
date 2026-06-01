@@ -1,12 +1,13 @@
 @echo off
-set PATH=C:\Users\qmal1\AppData\Local\nodejs\node-v22.14.0-win-x64;%PATH%
-cd /d C:\Users\qmal1\Desktop\demo
+set "NODE_PATH=C:\Users\qmal1\AppData\Local\nodejs\node-v22.14.0-win-x64"
+set "PATH=%NODE_PATH%;%PATH%"
+cd /d "%~dp0"
 echo ================================
-echo   Handwriting Sync 服务端
+echo   Handwriting Sync Server
 echo ================================
 echo.
 call npm install --silent
 echo.
-echo 启动中...
+echo Starting server...
 node server.js
 pause
