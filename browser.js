@@ -262,6 +262,8 @@ function handleWS(e) {
     } else if (msg.type === 'text') {
       const ctx = cv.peer.ctxBg
       ctx.save(); ctx.font = '16px system-ui'; ctx.fillStyle = '#1a1a1a'; ctx.fillText(msg.payload.content, msg.payload.x, msg.payload.y); ctx.restore()
+    } else if (['p','h1','h2','h3','todo','img'].includes(msg.type)) {
+      handleBlockMsg(msg)
     }
   } catch (_) {}
 }
@@ -451,3 +453,87 @@ function exportNotes() {
 
   btn.textContent = '导出'; btn.disabled = false
 }
+
+/* ── 块操作 ── */
+function addBlock(type, payload) {
+  const id = uid()
+  const msg = { id, type, payload, pageId: PAGE_ID, userId: USER_ID, userName, ts: Date.now(), source: USER_ID }
+  sendWS(msg)
+  // 本地渲染
+  const wrap = document.getElementById('wrap-mine')
+  if (!wrap) return
+  if (type === 'img') {
+    const img = document.createElement('img')
+    img.src = payload.src; img.style.maxWidth = '100%'; img.style.maxHeight = '300px'; img.style.borderRadius = '6px'
+    wrap.appendChild(img)
+  } else {
+    const div = document.createElement('div')
+    div.style.padding = '8px 12px'; div.style.margin = '4px 0'; div.style.background = '#fff'; div.style.borderRadius = '6px'; div.style.boxShadow = '0 1px 3px rgba(0,0,0,0.06)'
+    if (type.startsWith('h')) { const lvl = payload.level || 1; div.innerHTML = `<strong style="font-size:${28-lvl*4}px">${payload.text||'(heading ' + lvl + ')'}</strong>` }
+    else if (type === 'todo') { div.innerHTML = `<input type="checkbox" ${payload.checked?'checked':''}> ${payload.text||'(todo)'}` }
+    else { div.textContent = payload.text || '(text)' }
+    wrap.insertBefore(div, wrap.firstChild)
+  }
+}
+
+// Handle incoming block messages
+function handleBlockMsg(msg) {
+  if (msg.source === USER_ID) return
+  const wrap = document.getElementById('wrap-peer')
+  if (!wrap) return
+  if (msg.type === 'img') {
+    const img = document.createElement('img')
+    img.src = msg.payload.src; img.style.maxWidth = '100%'; img.style.maxHeight = '300px'; img.style.borderRadius = '6px'
+    wrap.insertBefore(img, wrap.firstChild)
+  } else if (msg.type === 'p' || msg.type === 'todo' || msg.type?.startsWith('h')) {
+    const div = document.createElement('div')
+    div.style.padding = '8px 12px'; div.style.margin = '4px 0'; div.style.background = '#fff'; div.style.borderRadius = '6px'; div.style.boxShadow = '0 1px 3px rgba(0,0,0,0.06)'
+    if (msg.type.startsWith('h')) { const lvl = msg.payload.level || 1; div.innerHTML = `<strong style="font-size:${28-lvl*4}px">${msg.payload.text||'(h)'}</strong> - <small>${msg.userName||msg.userId}</small>` }
+    else if (msg.type === 'todo') { div.innerHTML = `<input type="checkbox" ${msg.payload.checked?'checked':''} disabled> ${msg.payload.text||''}` }
+    else { div.textContent = (msg.payload.text||'') + ' - ' + (msg.userName||msg.userId) }
+    wrap.insertBefore(div, wrap.firstChild)
+  }
+}
+
+
+/* ── 触摸手势 (双指缩放/平移) ── */
+;(function setupGestures() {
+  let initDist = 0, initScale = 1, initX = 0, initY = 0, panX = 0, panY = 0
+  const wrap = document.getElementById('wrap-mine')
+  if (!wrap) return
+
+  wrap.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX
+      const dy = e.touches[0].clientY - e.touches[1].clientY
+      initDist = Math.hypot(dx, dy)
+      initScale = parseFloat(wrap.style.transform?.match(/scale\(([\d.]+)\)/)?.[1] || 1)
+      initX = panX; initY = panY
+    }
+  }, { passive: false })
+
+  wrap.addEventListener('touchmove', (e) => {
+    if (e.touches.length === 2) {
+      e.preventDefault()
+      const dx = e.touches[0].clientX - e.touches[1].clientX
+      const dy = e.touches[0].clientY - e.touches[1].clientY
+      const dist = Math.hypot(dx, dy)
+      const newScale = Math.min(3, Math.max(0.5, initScale * dist / initDist))
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2
+      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2
+      panX = initX + (midX - (initX || midX)); panY = initY + (midY - (initY || midY))
+      wrap.style.transform = `scale(${newScale})`
+      wrap.style.transformOrigin = '0 0'
+    }
+  }, { passive: false })
+
+  wrap.addEventListener('touchend', () => {
+    initDist = 0
+  })
+})()
+
+// Double tap to reset zoom
+document.getElementById('wrap-mine')?.addEventListener('dblclick', () => {
+  const wrap = document.getElementById('wrap-mine')
+  if (wrap) wrap.style.transform = ''
+})
