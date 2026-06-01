@@ -246,4 +246,25 @@ setTimeout(async () => {
   }
 }, 500)
 
+/* ── 主机 IP 显示 ── */
+const ipDisplay = document.getElementById('host-ip-display')
+const btnShowIP = document.getElementById('btn-show-ip')
+let ipVisible = false
+
+btnShowIP.addEventListener('click', async () => {
+  if (!ipVisible) {
+    const ip = await window.electronAPI?.getLanIP()
+    if (ip) {
+      ipDisplay.textContent = `主机 IP: ${ip}`
+      ipDisplay.style.display = 'inline'
+      btnShowIP.textContent = '隐藏'
+      ipVisible = true
+    }
+  } else {
+    ipDisplay.style.display = 'none'
+    btnShowIP.textContent = 'IP'
+    ipVisible = false
+  }
+})
+
 console.log('[UI] Ready')

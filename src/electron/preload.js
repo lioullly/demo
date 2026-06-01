@@ -31,9 +31,14 @@ const api = {
     return () => ipcRenderer.removeListener('peer-disconnected', handler)
   },
 
-  /** 查询 WS 服务状态 */
+  /** 查询 WS 服务状态（含本机 IP） */
   async getWSStatus() {
     return ipcRenderer.invoke('get-ws-status')
+  },
+
+  /** 获取本机局域网 IP */
+  async getLanIP() {
+    return ipcRenderer.invoke('get-lan-ip')
   },
 }
 

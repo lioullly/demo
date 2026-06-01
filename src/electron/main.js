@@ -8,6 +8,7 @@
  *   4. IPC 桥接：renderer ↔ 主进程 ↔ WS
  */
 
+import { networkInterfaces } from 'os'
 import { app, BrowserWindow, ipcMain } from 'electron'
 import { startHostDiscovery, stopDiscovery } from '../sync/lan.js'
 import { createWSServer } from '../sync/transport.js'
@@ -15,6 +16,19 @@ import { createWSServer } from '../sync/transport.js'
 let mainWindow = null
 let udpSocket = null
 let wssData = null
+
+/** 获取本机局域网 IPv4 地址 */
+function getLanIP() {
+  const ifaces = networkInterfaces()
+  for (const name of Object.keys(ifaces)) {
+    for (const iface of ifaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address
+      }
+    }
+  }
+  return '127.0.0.1'
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -75,7 +89,11 @@ ipcMain.on('send-message', (_event, msg) => {
 })
 
 ipcMain.handle('get-ws-status', () => {
-  return { running: !!wssData }
+  return { running: !!wssData, lanIP: getLanIP() }
+})
+
+ipcMain.handle('get-lan-ip', () => {
+  return getLanIP()
 })
 
 /* ── 应用生命周期 ── */
