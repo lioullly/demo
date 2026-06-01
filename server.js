@@ -11,6 +11,64 @@ import { networkInterfaces } from 'os'
 import { WebSocketServer } from 'ws'
 
 const WS_PORT = process.env.PORT || 3000
+const startTime = Date.now()
+
+/* ── 终端管理命令 ── */
+function setupCLI() {
+  import('readline').then(({ createInterface }) => {
+    const rl = createInterface({ input: process.stdin, output: process.stdout, prompt: '> ' })
+    rl.prompt()
+    rl.on('line', (line) => {
+      const cmd = line.trim().toLowerCase()
+      if (cmd === 'help' || cmd === 'h' || cmd === '?') {
+        console.log(`\n  管理命令:`)
+        console.log(`    list / ls        查看所有房间`)
+        console.log(`    info              查看服务器状态`)
+        console.log(`    clear <room>      清空指定房间数据`)
+        console.log(`    kick <room>       断开指定房间所有客户端`)
+        console.log(`    exit / quit       关闭服务器`)
+        console.log(`    help / ?          显示此帮助\n`)
+      } else if (cmd === 'list' || cmd === 'ls') {
+        if (rooms.size === 0) { console.log('  (无活跃房间)\n') }
+        else {
+          rooms.forEach((r, code) => {
+            const age = Math.round((Date.now() - r.createdAt) / 1000)
+            const ttl = r.timer ? ` (${Math.round(ROOM_TTL / 1000 - (Date.now() - (r.createdAt + r.peers.size * 10000))) / 100}s后销毁)` : ''
+            console.log(`  [${code}] ${r.peers.size}人 | ${r.history.length}笔 | 存活${age}s${ttl}`)
+          })
+          console.log(`  共 ${rooms.size}/${MAX_ROOMS} 个房间\n`)
+        }
+      } else if (cmd === 'info') {
+        const mem = process.memoryUsage()
+        const uptime = Math.round((Date.now() - startTime) / 1000)
+        let totalPeers = 0, totalStrokes = 0
+        rooms.forEach((r) => { totalPeers += r.peers.size; totalStrokes += r.history.length })
+        console.log(`\n  运行时间: ${uptime}s | 内存: ${Math.round(mem.heapUsed/1024/1024)}MB`)
+        console.log(`  房间: ${rooms.size}/${MAX_ROOMS} | 客户端: ${totalPeers} | 笔画: ${totalStrokes}\n`)
+      } else if (cmd.startsWith('clear ')) {
+        const target = cmd.slice(6).trim().toUpperCase()
+        const r = rooms.get(target)
+        if (r) { r.history = []; console.log(`  已清空房间 ${target} 的数据\n`) }
+        else console.log(`  房间 ${target} 不存在\n`)
+      } else if (cmd.startsWith('kick ')) {
+        const target = cmd.slice(5).trim().toUpperCase()
+        const r = rooms.get(target)
+        if (r) {
+          r.peers.forEach((c) => { try { c.close(4000, '管理员踢出') } catch (_) {} })
+          console.log(`  已踢出房间 ${target} 的所有客户端\n`)
+        } else console.log(`  房间 ${target} 不存在\n`)
+      } else if (cmd === 'exit' || cmd === 'quit') {
+        console.log('  正在关闭服务器...\n')
+        rooms.forEach((r) => { r.peers.forEach((c) => { try { c.close() } catch (_) {} }) })
+        rl.close()
+        process.exit(0)
+      } else if (cmd) {
+        console.log(`  未知命令: ${cmd}，输入 help 查看帮助\n`)
+      }
+      rl.prompt()
+    })
+  })
+}
 
 /* ── WebSocket ── */
 const MAX_ROOMS = 10
@@ -111,6 +169,7 @@ http.listen(WS_PORT, '0.0.0.0', () => {
   }
 
   console.log('\n  客户端打开上述地址即可创建/加入房间')
-  console.log('  房间码在客户端页面随机生成，无需预设')
+  console.log('  输入 help 查看管理命令')
   console.log('═══════════════════════════════════\n')
+  setupCLI()
 })
