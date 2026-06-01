@@ -26,7 +26,7 @@ const lobbyMsg = $('lobby-msg')
 const canvasView = $('canvas-view')
 const roomBadge = $('room-badge')
 
-let isCreate = true, room = '', ws = null
+let isCreate = true, room = '', ws = null, connectedHost = ''
 
 createInput.value = genRoom()
 btnRandom.onclick = () => { createInput.value = genRoom() }
@@ -54,7 +54,7 @@ function connectWS(host) {
     const url = `ws://${host}:${WS_PORT}?room=${encodeURIComponent(room)}`
     lobbyMsg.textContent = '连接中...'
     ws = new WebSocket(url)
-    ws.onopen = () => { lobbyMsg.textContent = '已连接'; resolve(true) }
+    ws.onopen = () => { lobbyMsg.textContent = '已连接'; connectedHost = host; resolve(true) }
     ws.onerror = () => { lobbyMsg.textContent = '连接失败'; ws = null; resolve(false) }
     ws.onclose = () => { if (ws) { lobbyMsg.textContent = '已断开'; ws = null } }
     setTimeout(() => { if (ws?.readyState !== WebSocket.OPEN) { ws = null; resolve(false) } }, 3000)
@@ -111,11 +111,11 @@ function done() {
   canvasView.classList.add('show')
   roomBadge.textContent = `Room: ${room}`
   const shareURL = () => {
-    const url = `${location.origin}${location.pathname}?room=${room}&host=${hostInput.value.trim()}`
+    const host = connectedHost || hostInput.value.trim()
+    const url = `${location.origin}${location.pathname}?room=${encodeURIComponent(room)}&host=${encodeURIComponent(host)}`
     navigator.clipboard?.writeText(url).catch(()=>{})
-    const orig = roomBadge.textContent
     roomBadge.textContent = 'Copied!'
-    setTimeout(() => { roomBadge.textContent = orig }, 1500)
+    setTimeout(() => { roomBadge.textContent = `Room: ${room}` }, 1500)
   }
   roomBadge.onclick = shareURL
   $('btn-share').onclick = shareURL
@@ -282,6 +282,7 @@ const urlHost = new URLSearchParams(location.search).get('host')
 if (urlRoom) {
   room = urlRoom.toUpperCase()
   createInput.value = room
-  hostInput.value = urlHost || location.hostname
-  connectWS(hostInput.value).then((ok) => { if (ok) done(); else done() })
+  const h = urlHost || location.hostname
+  hostInput.value = h
+  connectWS(h).then((ok) => { if (ok) done(); else done() })
 }
