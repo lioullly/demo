@@ -105,6 +105,11 @@ async function doScan() {
     }
   } else {
     lobbyMsg.textContent = '未发现主机'
+  }
+}
+
+btnScan.onclick = doScan
+
 btnConnectLobby.onclick = async () => {
   const host = hostInput.value.trim()
   if (!host) { lobbyMsg.textContent = '请输入主机地址'; return }
