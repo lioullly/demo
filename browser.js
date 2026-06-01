@@ -122,39 +122,50 @@ hostInput.onkeydown = (e) => { if (e.key === 'Enter') connect(hostInput.value.tr
 
 // 扫描局域网主机
 const btnScan = document.getElementById('btn-scan')
+const hostList = document.getElementById('host-list')
 btnScan.onclick = async () => {
   btnScan.textContent = '...'; btnScan.disabled = true
   statusEl.textContent = '扫描中...'; statusEl.className = 'status-wait'
+  hostList.style.display = 'none'
 
-  // 从当前页面推断子网
+  // 常见子网
+  const subnets = ['192.168.1', '192.168.0', '192.168.2', '192.168.31', '192.168.50', '10.0.0']
   const host = window.location.hostname
-  let subnet = '192.168.1'
   if (host && host !== 'localhost' && host !== '127.0.0.1') {
     const parts = host.split('.')
-    if (parts.length === 4) subnet = parts.slice(0, 3).join('.')
+    if (parts.length === 4) {
+      const s = parts.slice(0, 3).join('.')
+      if (!subnets.includes(s)) subnets.unshift(s)
+    }
   }
 
   const found = []
-  const promises = []
-  for (let i = 1; i <= 254; i++) {
-    const ip = `${subnet}.${i}`
-    promises.push(
-      fetch(`http://${ip}:${WS_PORT}/api/status`, { signal: AbortSignal.timeout(500) })
-        .then((r) => r.json())
-        .then((d) => { if (d.name === 'handwriting-sync') found.push(d) })
-        .catch(() => {})
-    )
+  for (const subnet of subnets) {
+    const batch = []
+    for (let i = 1; i <= 20; i++) {
+      const ip = `${subnet}.${i}`
+      batch.push(
+        fetch(`http://${ip}:${WS_PORT}/api/status`, { signal: AbortSignal.timeout(600) })
+          .then((r) => r.json())
+          .then((d) => { if (d.name === 'handwriting-sync') found.push(d); statusEl.textContent = `发现 ${found.length} 台...` })
+          .catch(() => {})
+      )
+    }
+    await Promise.all(batch)
+    if (found.length > 0) break
   }
 
-  await Promise.all(promises)
   btnScan.textContent = '扫描'; btnScan.disabled = false
 
   if (found.length > 0) {
-    const h = found[0]
-    hostInput.value = h.ip
-    statusEl.textContent = `发现主机: ${h.ip}`; statusEl.className = 'status-ok'
-    connect(h.ip)
+    statusEl.textContent = `发现 ${found.length} 台主机`; statusEl.className = 'status-ok'
+    // 显示主机列表
+    hostList.style.display = 'block'
+    hostList.innerHTML = found.map((h) =>
+      `<span style="display:inline-block;margin:4px;padding:4px 10px;background:#f0f0f0;border-radius:6px;cursor:pointer;" onclick="document.getElementById('host-addr').value='${h.ip}';document.getElementById('btn-connect').click()">${h.ip}</span>`
+    ).join('')
   } else {
+    hostList.style.display = 'none'
     statusEl.textContent = '未发现主机，请手动输入 IP'; statusEl.className = 'status-wait'
   }
 }
