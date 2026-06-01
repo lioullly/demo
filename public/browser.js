@@ -303,12 +303,18 @@ function resize() {
     if (!wrap) continue
     const dpr = devicePixelRatio || 1
     let w = wrap.clientWidth, h = wrap.clientHeight
-    // Apply page size aspect ratio if not Auto
     const ps = getPageSize()
     if (ps) {
+      // Fixed page size: constrain aspect ratio and center
       const ratio = ps.w / ps.h
-      if (w / h > ratio) w = Math.min(w, h * ratio)
-      else h = Math.min(h, w / ratio)
+      if (w / h > ratio) w = h * ratio
+      else h = w / ratio
+      // Scale down to 85% of container for visible margin
+      const scale = Math.min((wrap.clientWidth * 0.85) / w, (wrap.clientHeight * 0.85) / h, 1)
+      w = Math.floor(w * scale); h = Math.floor(h * scale)
+      wrap.style.display = 'flex'; wrap.style.alignItems = 'center'; wrap.style.justifyContent = 'center'
+    } else {
+      wrap.style.display = ''; wrap.style.alignItems = ''; wrap.style.justifyContent = ''
     }
     for (const layer of ['bg', 'fg']) {
       const c = cv[k][layer]
