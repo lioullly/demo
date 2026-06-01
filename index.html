@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Dual Note Sync</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; background: #f5f5f5; overflow: hidden; touch-action: none; }
+    #app { display: flex; flex-direction: column; height: 100dvh; width: 100vw; }
+    #status-bar { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: #fff; border-bottom: 1px solid #e0e0e0; flex-shrink: 0; }
+    #status-bar button { padding: 6px 14px; border: 1px solid #d0d0d0; border-radius: 6px; background: #fff; cursor: pointer; font-size: 13px; }
+    #status-bar button.active { background: #a78bfa; color: #fff; border-color: #a78bfa; }
+    #status-bar input[type="color"] { width: 28px; height: 28px; border: none; cursor: pointer; }
+    #status-bar input[type="range"] { width: 80px; }
+    #status-bar .spacer { flex: 1; }
+    #status { font-size: 12px; padding: 4px 8px; border-radius: 10px; }
+    .status-ok { color: #22c55e; background: #f0fdf4; }
+    .status-wait { color: #f59e0b; background: #fffbeb; }
+    #host-input { display: flex; gap: 4px; align-items: center; }
+    #host-input input { width: 140px; padding: 4px 8px; border: 1px solid #d0d0d0; border-radius: 4px; font-size: 12px; }
+    #canvas-container { flex: 1; position: relative; background: #fafafa; overflow: hidden; }
+    canvas { position: absolute; top: 0; left: 0; cursor: crosshair; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="status-bar">
+      <button id="btn-pen" class="active">pen</button>
+      <button id="btn-eraser">eraser</button>
+      <input type="color" id="color-picker" value="#1a1a1a" />
+      <input type="range" id="size-slider" min="1" max="20" value="3" />
+      <span class="spacer"></span>
+      <div id="host-input">
+        <input id="host-addr" type="text" placeholder="192.168.x.x" value="" />
+        <button id="btn-connect">连接</button>
+      </div>
+      <span id="status" class="status-wait">未连接</span>
+    </div>
+    <div id="canvas-container">
+      <canvas id="bg-canvas"></canvas>
+      <canvas id="fg-canvas"></canvas>
+    </div>
+  </div>
+  <script src="./browser.js" type="module"></script>
+</body>
+</html>
