@@ -36,6 +36,7 @@ function setupCLI() {
         console.log('    info              Server status')
         console.log('    clear <room>      Clear room data')
         console.log('    kick <room>       Disconnect all clients in room')
+        console.log('    reboot            Restart server')
         console.log('    exit / quit       Stop server')
         console.log('    help / ?          This help\n')
       } else if (cmd === 'list' || cmd === 'ls') {
@@ -72,6 +73,15 @@ function setupCLI() {
           peers.forEach((c) => { try { c.close(4000, 'kicked') } catch (_) {} })
           console.log(`  Kicked all clients from room ${target}\n`)
         } else console.log(`  Room ${target} not found\n`)
+      } else if (cmd === 'reboot') {
+        console.log('  Restarting server...\n')
+        rooms.forEach((r) => { Array.from(r.peers).forEach((c) => { try { c.close() } catch (_) {} }) })
+        rl.close()
+        import('child_process').then(({ spawn }) => {
+          const p = spawn(process.execPath, process.argv.slice(1), { detached: true, stdio: 'inherit' })
+          p.unref()
+          process.exit(0)
+        })
       } else if (cmd === 'exit' || cmd === 'quit') {
         console.log('  Shutting down...\n')
         rooms.forEach((r) => { Array.from(r.peers).forEach((c) => { try { c.close() } catch (_) {} }) })
@@ -160,25 +170,31 @@ const http = createServer((req, res) => {
     return
   }
   if (req.url === '/api/status') {
-  if (req.method === "POST" && req.url === "/api/save") {
-    let body = ""; req.on("data", (c) => { body += c.toString(); if (body.length > 5*1024*1024) req.destroy() })
-    req.on("end", () => {
-      try { const d = JSON.parse(body); if (d.room) { savedNotes.set(d.room.toUpperCase(), { data: d.data, savedAt: Date.now() }); res.writeHead(200); res.end(JSON.stringify({ ok: true })) } }
-      catch(_) { res.writeHead(400); res.end("bad request") }
+    const list = []
+    rooms.forEach((r, code) => list.push({ room: code, clients: r.peers.size, createdAt: r.createdAt }))
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
+    res.end(JSON.stringify({ name: 'handwriting-sync', rooms: list, port: WS_PORT }))
+    return
+  }
+  if (req.method === 'POST' && req.url === '/api/save') {
+    let body = ''; req.on('data', (c) => { body += c.toString(); if (body.length > 5*1024*1024) req.destroy() })
+    req.on('end', () => {
+      try { const d = JSON.parse(body); if (d.room) { savedNotes.set(d.room.toUpperCase(), { data: d.data, savedAt: Date.now() }); res.writeHead(200); res.end(JSON.stringify({ ok: true })) } else { res.writeHead(400); res.end('bad request') } }
+      catch (_) { res.writeHead(400); res.end('bad request') }
     })
     return
   }
-  if (req.url.startsWith("/api/load?")) {
-    const room = new URL(req.url, "http://localhost").searchParams.get("room")?.toUpperCase()
+  if (req.url.startsWith('/api/load?')) {
+    const room = new URL(req.url, 'http://localhost').searchParams.get('room')?.toUpperCase()
     const saved = savedNotes.get(room)
-    if (saved && Date.now() - saved.savedAt < SAVE_TTL) { res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }); res.end(JSON.stringify({ ok: true, data: saved.data, savedAt: saved.savedAt })) }
-    else if (saved) { savedNotes.delete(room); res.writeHead(404); res.end("expired") }
-    else { res.writeHead(404); res.end("not found") }
+    if (saved && Date.now() - saved.savedAt < SAVE_TTL) { res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }); res.end(JSON.stringify({ ok: true, data: saved.data, savedAt: saved.savedAt })) }
+    else if (saved) { savedNotes.delete(room); res.writeHead(404); res.end('expired') }
+    else { res.writeHead(404); res.end('not found') }
     return
   }
     const list = []
     rooms.forEach((r, code) => list.push({ room: code, clients: r.peers.size, createdAt: r.createdAt }))
-    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
+    res.writeHead(200, { 'Cache-Control': 'no-cache', 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
     res.end(JSON.stringify({ name: 'handwriting-sync', rooms: list, port: WS_PORT }))
     return
   }
@@ -193,7 +209,7 @@ const http = createServer((req, res) => {
   readFile(fullPath, (err, data) => {
     if (err) { res.writeHead(404); res.end('Not found') }
     else {
-      res.writeHead(200, { 'Content-Type': MIME[extname(fullPath)] || 'application/octet-stream' })
+      res.writeHead(200, { 'Cache-Control': 'no-cache', 'Content-Type': MIME[extname(fullPath)] || 'application/octet-stream' })
       res.end(data)
     }
   })
