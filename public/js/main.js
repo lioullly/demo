@@ -41,7 +41,7 @@ async function doScan() {
   let found = null
   for (const sub of subs) {
     const batch = []
-    for (let i=1;i<=20;i++) { const ip=`${sub}.${i}`; batch.push(fetch(`http://${ip}:${WS_PORT}/api/status`,{signal:AbortSignal.timeout(600)}).then(r=>r.json()).then(d=>{if(d.name==='handwriting-sync'&&!found)found={ip,d.rooms:d.rooms||[]}}).catch(()=>{})) }
+    for (let i=1;i<=20;i++) { const ip=`${sub}.${i}`; batch.push(fetch(`http://${ip}:${WS_PORT}/api/status`,{signal:AbortSignal.timeout(600)}).then(r=>r.json()).then(d=>{if(d.name==='handwriting-sync'&&!found)found={ip,rooms:d.rooms||[]}}).catch(()=>{})) }
     await Promise.all(batch); if(found)break
   }
   btnScan.textContent='Scan'; btnScan.disabled=false
